@@ -8,8 +8,10 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { openDb, DEFAULT_CONFIG, mergeConfig } from './db.js';
+import { createFcm, loadFcmCredentials } from './fcm.js';
+import { RINGTONES, ringtoneWav } from './ringtones.js';
 import {
-  now, sha256, randomToken, hashPassword, verifyPassword, parseCookies, haversineMeters, sanitizeConfig,
+  now, sha256, randomToken, hashPassword, verifyPassword, parseCookies, haversineMeters, sanitizeConfig, phoneKey,
 } from './util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,7 +29,7 @@ const SESSION_COOKIE = 'cerca_s';
 const SESSION_DAYS = 30;
 const PAIR_CODE_MINUTES = 30;
 
-export async function buildServer({ dataDir = env.dataDir, logger = true } = {}) {
+export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = null } = {}) {
   const db = openDb(dataDir);
   const uploadsDir = path.join(dataDir, 'uploads');
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -43,6 +45,8 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
   webpush.setVapidDetails(env.vapidSubject, vapidKeys.publicKey, vapidKeys.privateKey);
 
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 1024 * 1024 });
+  // Firebase Cloud Messaging: avisos a la app de la familia y "despertar" al móvil del mayor (los tests pasan uno falso)
+  const push = fcm ?? createFcm({ credentials: loadFcmCredentials(dataDir), log: app.log });
   await app.register(fastifyMultipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
   await app.register(fastifyWebsocket, { options: { maxPayload: 64 * 1024 } });
   await app.register(fastifyStatic, { root: path.join(__dirname, '..', 'public'), prefix: '/' });
@@ -54,7 +58,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
   // ---------- Helpers ----------
   const q = {
     userByEmail: db.prepare(`SELECT * FROM users WHERE email = ?`),
-    userBySession: db.prepare(`SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`),
+    userBySession: db.prepare(`SELECT u.id, u.email, u.name, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?`),
     seniorByDevice: db.prepare(`SELECT * FROM seniors WHERE device_token_hash = ?`),
     seniorForUser: db.prepare(`SELECT s.*, m.role FROM seniors s JOIN members m ON m.senior_id = s.id WHERE s.id = ? AND m.user_id = ?`),
     membersOf: db.prepare(`SELECT u.id, u.email, u.name, m.role FROM members m JOIN users u ON u.id = m.user_id WHERE m.senior_id = ?`),
@@ -71,10 +75,21 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
       `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${secure ? '; Secure' : ''}`);
   }
 
+  // La sesión llega por cookie (panel web) o por "Authorization: Bearer" (app Cerca Familia)
+  function sessionToken(req) {
+    const auth = String(req.headers.authorization ?? '');
+    return auth.startsWith('Bearer ') ? auth.slice(7) : parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  }
+
   function requireUser(req, reply) {
-    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-    const user = token && q.userBySession.get(sha256(token), now());
-    if (!user) { reply.code(401).send({ error: 'No has iniciado sesión' }); return null; }
+    const token = sessionToken(req);
+    const row = token && q.userBySession.get(sha256(token), now());
+    if (!row) { reply.code(401).send({ error: 'No has iniciado sesión' }); return null; }
+    const { expires_at: expiresAt, ...user } = row;
+    // Sesión deslizante: quien usa la app a menudo no tiene que volver a entrar nunca
+    if (expiresAt - now() < (SESSION_DAYS / 2) * 86400_000) {
+      db.prepare(`UPDATE sessions SET expires_at = ? WHERE token_hash = ?`).run(now() + SESSION_DAYS * 86400_000, sha256(token));
+    }
     return user;
   }
 
@@ -115,27 +130,54 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
     return false;
   }
 
+  /** Despierta al móvil del mayor por FCM (cuando no tiene el WebSocket abierto). true si Firebase lo ha aceptado. */
+  async function pushToDevice(seniorId, data) {
+    const row = db.prepare(`SELECT fcm_token FROM seniors WHERE id = ?`).get(seniorId);
+    if (!row?.fcm_token) return false;
+    const result = await push.send({
+      token: row.fcm_token,
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])), // FCM solo admite textos
+      android: { priority: 'high', ttl: '600s' },
+    });
+    if (result === 'invalid') db.prepare(`UPDATE seniors SET fcm_token = NULL WHERE id = ?`).run(seniorId);
+    return result === 'ok';
+  }
+
   async function notifyMembers(seniorId, title, body, data = {}) {
     const subs = db.prepare(`SELECT p.* FROM push_subs p JOIN members m ON m.user_id = p.user_id WHERE m.senior_id = ?`).all(seniorId);
-    await Promise.all(subs.map(async (s) => {
-      try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys_json) },
-          JSON.stringify({ title, body, data: { seniorId, ...data } }), { TTL: 3600, urgency: 'high' });
-      } catch (err) {
-        if (err.statusCode === 404 || err.statusCode === 410) db.prepare(`DELETE FROM push_subs WHERE endpoint = ?`).run(s.endpoint);
-        else app.log.warn({ err: err.message }, 'push fallido');
-      }
-    }));
+    const tokens = db.prepare(`SELECT f.token FROM fcm_tokens f JOIN members m ON m.user_id = f.user_id WHERE m.senior_id = ?`).all(seniorId);
+    await Promise.all([
+      ...subs.map(async (s) => {
+        try {
+          await webpush.sendNotification({ endpoint: s.endpoint, keys: JSON.parse(s.keys_json) },
+            JSON.stringify({ title, body, data: { seniorId, ...data } }), { TTL: 3600, urgency: 'high' });
+        } catch (err) {
+          if (err.statusCode === 404 || err.statusCode === 410) db.prepare(`DELETE FROM push_subs WHERE endpoint = ?`).run(s.endpoint);
+          else app.log.warn({ err: err.message }, 'push fallido');
+        }
+      }),
+      ...tokens.map(async ({ token }) => {
+        const result = await push.send({
+          token,
+          notification: { title, body },
+          data: Object.fromEntries(Object.entries({ seniorId, ...data }).map(([k, v]) => [k, String(v)])),
+          // Los canales "sos" y "avisos" los crea la app de la familia; el SOS suena aunque esté en silencio
+          android: { priority: 'high', notification: { channel_id: data.type === 'sos' ? 'sos' : 'avisos' } },
+        });
+        if (result === 'invalid') db.prepare(`DELETE FROM fcm_tokens WHERE token = ?`).run(token);
+      }),
+    ]);
   }
 
   const ALERT_TITLES = {
     sos: '🆘 SOS', zone_exit: '📍 Ha salido de la zona', zone_enter: '🏠 Ha vuelto a la zona',
     low_battery: '🔋 Batería baja', offline: '📵 Sin conexión', setup_problem: '⚠️ Revisa el móvil',
+    auto_answer: '📞 Llamada contestada sola',
   };
 
   function createAlert(senior, type, message, lat = null, lng = null) {
     const info = q.insertAlert.run(senior.id, type, message, lat, lng, now());
-    notifyMembers(senior.id, `${ALERT_TITLES[type] ?? 'Aviso'} · ${senior.name}`, message, { alertId: Number(info.lastInsertRowid) })
+    notifyMembers(senior.id, `${ALERT_TITLES[type] ?? 'Aviso'} · ${senior.name}`, message, { alertId: Number(info.lastInsertRowid), type })
       .catch(() => {});
     return Number(info.lastInsertRowid);
   }
@@ -144,6 +186,14 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
   // AUTH FAMILIA
   // ======================================================================
   app.get('/api/meta', async () => ({ allowRegistration: env.allowRegistration, vapidPublicKey: vapidKeys.publicKey }));
+
+  // Timbres: la lista (para elegir) y cada sonido (para escucharlo y para que el móvil del mayor lo descargue)
+  app.get('/api/ringtones', async () => RINGTONES);
+  app.get('/ringtones/:file', async (req, reply) => {
+    const wav = ringtoneWav(String(req.params.file).replace(/\.wav$/, ''));
+    if (!wav) return reply.code(404).send({ error: 'No existe ese timbre' });
+    return reply.header('Content-Type', 'audio/wav').header('Cache-Control', 'public, max-age=86400').send(wav);
+  });
 
   app.post('/api/auth/register', async (req, reply) => {
     if (!env.allowRegistration) return reply.code(403).send({ error: 'El registro está desactivado' });
@@ -170,13 +220,17 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
     const token = randomToken();
     db.prepare(`INSERT INTO sessions(token_hash, user_id, expires_at) VALUES (?,?,?)`)
       .run(sha256(token), userId, now() + SESSION_DAYS * 86400_000);
+    // La app guarda el token y lo manda como Bearer; el navegador usa la cookie (y nunca ve el token)
+    if (req.body?.client === 'app') return { ok: true, token };
     setSessionCookie(req, reply, token, SESSION_DAYS * 86400);
     return { ok: true };
   }
 
   app.post('/api/auth/logout', async (req, reply) => {
-    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+    const token = sessionToken(req);
     if (token) db.prepare(`DELETE FROM sessions WHERE token_hash = ?`).run(sha256(token));
+    // Ese móvil deja de recibir avisos
+    if (req.body?.fcmToken) db.prepare(`DELETE FROM fcm_tokens WHERE token = ?`).run(String(req.body.fcmToken));
     setSessionCookie(req, reply, '', 0);
     return { ok: true };
   });
@@ -197,6 +251,18 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
     return { ok: true };
   });
 
+  // App Cerca Familia: token de Firebase de este móvil para recibir los avisos
+  app.post('/api/push/fcm', async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const token = String(req.body?.token ?? '');
+    if (!/^[\w:-]{20,4096}$/.test(token)) return reply.code(400).send({ error: 'Token no válido' });
+    db.prepare(`INSERT INTO fcm_tokens(token, user_id, updated_at) VALUES (?,?,?)
+                ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, updated_at = excluded.updated_at`)
+      .run(token, user.id, now());
+    return { ok: true };
+  });
+
   // ======================================================================
   // PANEL: PERSONAS MAYORES
   // ======================================================================
@@ -207,6 +273,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
       role: s.role,
       paired: Boolean(s.device_token_hash),
       online: deviceSockets.has(s.id),
+      pushReady: Boolean(s.fcm_token), // se le puede despertar al instante aunque no esté "online"
       lastSeen: s.last_seen,
       status: s.status_json ? JSON.parse(s.status_json) : null,
       device: s.device_info ? JSON.parse(s.device_info) : null,
@@ -267,10 +334,13 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
     return { ok: true };
   });
 
-  function saveConfig(senior, cfg) {
+  /** Guarda y avisa al móvil: por WebSocket si está conectado y, si no, despertándolo por FCM. */
+  function saveConfig(senior, cfg, { notifyDevice = true } = {}) {
     const version = senior.config_version + 1;
     db.prepare(`UPDATE seniors SET config_json = ?, config_version = ? WHERE id = ?`).run(JSON.stringify(cfg), version, senior.id);
-    sendToDevice(senior.id, { type: 'config', version });
+    if (notifyDevice && !sendToDevice(senior.id, { type: 'config', version })) {
+      pushToDevice(senior.id, { type: 'config', version }).catch(() => {});
+    }
     return version;
   }
 
@@ -312,7 +382,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
     const ctx = requireSenior(req, reply);
     if (!ctx) return;
     deviceSockets.get(ctx.senior.id)?.close();
-    db.prepare(`UPDATE seniors SET device_token_hash = NULL, device_info = NULL WHERE id = ?`).run(ctx.senior.id);
+    db.prepare(`UPDATE seniors SET device_token_hash = NULL, device_info = NULL, fcm_token = NULL WHERE id = ?`).run(ctx.senior.id);
     return { ok: true };
   });
 
@@ -320,8 +390,20 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
     const ctx = requireSenior(req, reply);
     if (!ctx) return;
     const live = sendToDevice(ctx.senior.id, { type: 'locate' });
+    // Si no está conectado, se le despierta por FCM; y por si acaso, queda pendiente para el siguiente latido
+    const pushed = !live && await pushToDevice(ctx.senior.id, { type: 'locate' });
     db.prepare(`UPDATE seniors SET locate_requested = 1 WHERE id = ?`).run(ctx.senior.id);
-    return { ok: true, live };
+    return { ok: true, live, pushed };
+  });
+
+  // "Hacerlo sonar en su móvil": que la familia compruebe que el timbre elegido se oye (suena unos segundos)
+  app.post('/api/seniors/:id/ring-test', async (req, reply) => {
+    const ctx = requireSenior(req, reply);
+    if (!ctx) return;
+    const msg = { type: 'ring', ringtone: cfgOf(ctx.senior).calls.ringtone };
+    const live = sendToDevice(ctx.senior.id, msg);
+    const pushed = !live && await pushToDevice(ctx.senior.id, msg);
+    return { ok: true, live, pushed };
   });
 
   app.get('/api/seniors/:id/locations', async (req, reply) => {
@@ -349,7 +431,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
     const ctx = requireSenior(req, reply);
     if (!ctx) return;
     const other = q.userByEmail.get(String(req.body?.email ?? ''));
-    if (!other) return reply.code(404).send({ error: 'Esa persona tiene que crear antes su cuenta en el panel' });
+    if (!other) return reply.code(404).send({ error: 'Esa persona tiene que crear antes su cuenta en Cerca' });
     db.prepare(`INSERT OR IGNORE INTO members(senior_id, user_id, role) VALUES (?,?, 'member')`).run(ctx.senior.id, other.id);
     return { ok: true };
   });
@@ -388,9 +470,42 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
     if (!senior) return reply.code(404).send({ error: 'Código incorrecto o caducado' });
     const token = randomToken();
     deviceSockets.get(senior.id)?.close(); // si había otro móvil emparejado, se desconecta
-    db.prepare(`UPDATE seniors SET device_token_hash = ?, device_info = ?, pair_code = NULL, pair_expires = NULL, last_seen = ? WHERE id = ?`)
+    db.prepare(`UPDATE seniors SET device_token_hash = ?, device_info = ?, fcm_token = NULL, pair_code = NULL, pair_expires = NULL, last_seen = ? WHERE id = ?`)
       .run(sha256(token), JSON.stringify(req.body?.device ?? {}), now(), senior.id);
     return { token, seniorId: senior.id, name: senior.name };
+  });
+
+  // Token de Firebase del móvil del mayor, para despertarlo al instante (cambios, "¿dónde está?")
+  app.post('/api/device/fcm', async (req, reply) => {
+    const senior = requireDevice(req, reply);
+    if (!senior) return;
+    const token = String(req.body?.token ?? '');
+    if (!/^[\w:-]{20,4096}$/.test(token)) return reply.code(400).send({ error: 'Token no válido' });
+    db.prepare(`UPDATE seniors SET fcm_token = ? WHERE id = ?`).run(token, senior.id);
+    return { ok: true };
+  });
+
+  // El mayor marca o desmarca un favorito desde su agenda. Se guarda en la misma lista que edita la familia.
+  app.post('/api/device/favorites', async (req, reply) => {
+    const senior = requireDevice(req, reply);
+    if (!senior) return;
+    const phone = String(req.body?.phone ?? '').replace(/[^\d+*#]/g, '').slice(0, 30);
+    const key = phoneKey(phone);
+    if (!key) return reply.code(400).send({ error: 'Número no válido' });
+    const cfg = cfgOf(senior);
+    const index = cfg.contacts.findIndex((c) => phoneKey(c.phone) === key);
+    if (req.body?.favorite === false) {
+      if (index < 0) return { ok: true, version: senior.config_version };
+      const [gone] = cfg.contacts.splice(index, 1);
+      if (cfg.sosContactId === gone.id) cfg.sosContactId = cfg.contacts[0]?.id ?? null;
+    } else {
+      if (index >= 0) return { ok: true, version: senior.config_version };
+      if (cfg.contacts.length >= 12) return reply.code(400).send({ error: 'Ya hay 12 favoritos. Quita alguno antes de añadir otro.' });
+      const name = String(req.body?.name ?? '').trim().slice(0, 40) || phone;
+      cfg.contacts.push({ id: randomToken(6), name, phone, photo: null, whatsapp: false });
+    }
+    // El propio móvil ya va a sincronizar: no hace falta avisarle
+    return { ok: true, version: saveConfig(senior, sanitizeConfig(cfg, DEFAULT_CONFIG), { notifyDevice: false }) };
   });
 
   app.get('/api/device/config', async (req, reply) => {
@@ -412,6 +527,8 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
       locationPermission: b.locationPermission ?? null,
       locationEnabled: b.locationEnabled !== false,
       appVersion: String(b.appVersion ?? ''),
+      // false = la familia ha elegido timbre pero falta el permiso de "Modificar ajustes del sistema"
+      ringtoneAllowed: typeof b.ringtoneAllowed === 'boolean' ? b.ringtoneAllowed : null,
       ts: now(),
     };
     db.prepare(`UPDATE seniors SET status_json = ? WHERE id = ?`).run(JSON.stringify(status), senior.id);
@@ -460,7 +577,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
   app.post('/api/device/alert', async (req, reply) => {
     const senior = requireDevice(req, reply);
     if (!senior) return;
-    const { type, lat, lng, zoneName } = req.body ?? {};
+    const { type, lat, lng, zoneName, contactName } = req.body ?? {};
     const la = Number.isFinite(lat) ? lat : null;
     const ln = Number.isFinite(lng) ? lng : null;
     if (la != null && ln != null) q.insertLocation.run(senior.id, la, ln, null, null, `alert:${type}`, now());
@@ -470,6 +587,9 @@ export async function buildServer({ dataDir = env.dataDir, logger = true } = {})
       case 'sos': message = `${senior.name} ha pulsado el botón SOS.`; break;
       case 'zone_exit': message = `${senior.name} ha salido de "${String(zoneName ?? 'la zona').slice(0, 40)}".`; break;
       case 'zone_enter': message = `${senior.name} ha vuelto a "${String(zoneName ?? 'la zona').slice(0, 40)}".`; break;
+      case 'auto_answer':
+        message = `${senior.name} no contestaba: la llamada de ${String(contactName ?? 'un familiar').slice(0, 40)} se ha contestado sola en manos libres.`;
+        break;
       default: return reply.code(400).send({ error: 'Tipo de alerta no válido' });
     }
     // Para zone_exit comprobamos en servidor que de verdad está fuera de todas las zonas (evita falsos positivos)

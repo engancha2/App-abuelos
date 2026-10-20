@@ -99,11 +99,40 @@ object Store {
         get() = prefs.getInt("lastAppsHash", 0)
         set(v) = prefs.edit().putInt("lastAppsHash", v).apply()
 
+    // ---- Timbre (calls/Ringer.kt) ----
+    /** El timbre de Cerca puesto ahora como tono del móvil; null = el suyo de siempre. */
+    var appliedRingtone: String?
+        get() = prefs.getString("appliedRingtone", null)
+        set(v) = prefs.edit().putString("appliedRingtone", v).apply()
+
+    /** El tono que tenía el móvil antes de poner el de Cerca ("" = ninguno), para poder volver a él. */
+    var originalRingtone: String?
+        get() = prefs.getString("originalRingtone", null)
+        set(v) = prefs.edit().putString("originalRingtone", v).apply()
+
     // ---- Llamadas repetidas de desconocidos ("dejar pasar si insiste") ----
     fun registerUnknownCall(key: String, now: Long): Boolean {
         val last = prefs.getLong("unk_$key", 0)
         prefs.edit().putLong("unk_$key", now).apply()
         return now - last < 5 * 60_000
+    }
+
+    // ---- Llamadas perdidas seguidas de un favorito ("contestar sola") ----
+    // Se guardan en disco: entre una llamada y otra, Android puede cerrar la app
+    private fun missedTimes(key: String, now: Long, windowMs: Long): List<Long> =
+        prefs.getString("miss_$key", null).orEmpty().split(',').mapNotNull { it.toLongOrNull() }.filter { now - it < windowMs }
+
+    /** Llamadas perdidas de ese número en los últimos [windowMs]. */
+    fun missedFavoriteCount(key: String, now: Long, windowMs: Long): Int = missedTimes(key, now, windowMs).size
+
+    fun registerMissedFavorite(key: String, now: Long, windowMs: Long) {
+        val times = (missedTimes(key, now, windowMs) + now).takeLast(10)
+        prefs.edit().putString("miss_$key", times.joinToString(",")).apply()
+    }
+
+    /** Contestada, rechazada o devuelta: ya no son "seguidas sin respuesta". */
+    fun clearMissedFavorite(key: String) {
+        prefs.edit().remove("miss_$key").apply()
     }
 
     // ---- Cola de ubicaciones pendientes de subir (sin cobertura) ----

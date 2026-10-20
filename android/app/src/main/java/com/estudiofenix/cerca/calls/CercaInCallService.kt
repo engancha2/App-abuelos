@@ -8,19 +8,22 @@ import android.content.Context
 import android.content.Intent
 import android.telecom.Call
 import android.telecom.CallAudioState
+import android.telecom.CallEndpoint
 import android.telecom.InCallService
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import com.estudiofenix.cerca.CercaApp
-import com.estudiofenix.cerca.R
 import com.estudiofenix.cerca.data.Store
+import com.estudiofenix.cerca.R
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Android nos entrega aquí todas las llamadas (entrantes y salientes) porque somos la app de teléfono
@@ -39,9 +42,9 @@ class CercaInCallService : InCallService() {
     override fun onCreate() {
         super.onCreate()
         CallManager.attach(this)
-        // La notificación sigue al estado de la llamada principal
+        // La notificación sigue al estado de la llamada principal (y al nombre de la agenda, cuando llega)
         scope.launch {
-            CallManager.state.collectLatest { snapshot ->
+            combine(CallManager.state, CallManager.callers) { snapshot, _ -> snapshot }.collectLatest { snapshot ->
                 val call = snapshot.primary
                 if (call == null) cancelNotification() else showNotification(call)
             }
@@ -50,16 +53,28 @@ class CercaInCallService : InCallService() {
 
     override fun onDestroy() {
         scope.cancel()
+        cancelNotification() // con el ámbito cancelado, ya no lo haría el collect de arriba
         CallManager.attach(null)
         super.onDestroy()
     }
 
     override fun onCallAdded(call: Call) {
+        if (fromOtherApp(call)) return
         CallManager.add(call)
+        // El nombre de la agenda se busca aparte: la pantalla de llamada se abre ya, sin esperar
+        scope.launch { CallManager.lookUpCaller(applicationContext, call.number) }
+        AutoAnswer.onCallAdded(applicationContext, call)
+        openCallScreen()
+    }
+
+    /** Android pide volver a enseñar la llamada (p. ej. al tocar el aviso de llamada en curso del sistema). */
+    override fun onBringToForeground(showDialpad: Boolean) {
         openCallScreen()
     }
 
     override fun onCallRemoved(call: Call) {
+        if (fromOtherApp(call)) return
+        AutoAnswer.onCallRemoved(call)
         CallManager.remove(call)
     }
 
@@ -67,6 +82,25 @@ class CercaInCallService : InCallService() {
     override fun onCallAudioStateChanged(audioState: CallAudioState?) {
         CallManager.onAudio(audioState)
     }
+
+    // Android 14+: por dónde va de verdad el audio (altavoz, auricular, Bluetooth…) y qué salidas hay
+    @RequiresApi(34)
+    override fun onCallEndpointChanged(callEndpoint: CallEndpoint) {
+        CallManager.onEndpoint(callEndpoint)
+    }
+
+    @RequiresApi(34)
+    override fun onAvailableCallEndpointsChanged(availableEndpoints: MutableList<CallEndpoint>) {
+        CallManager.onEndpoints(availableEndpoints)
+    }
+
+    /**
+     * Llamadas que gestiona otra app (WhatsApp…): solo llegan en la versión de pruebas, que las pide para sus
+     * llamadas de prueba. Las de otras apps las enseña su propia app, no Cerca.
+     */
+    private fun fromOtherApp(call: Call): Boolean =
+        call.details.hasProperty(Call.Details.PROPERTY_SELF_MANAGED) &&
+            call.details.accountHandle?.componentName?.packageName != packageName
 
     private fun openCallScreen() {
         // Si el launcher está en pantalla (lo normal), Android deja abrir la actividad directamente.
@@ -80,9 +114,9 @@ class CercaInCallService : InCallService() {
 
     // ---------------------------------------------------------------- Notificación de llamada
     private fun showNotification(call: Call) {
-        val contact = Store.config.value.contactForNumber(call.number)
-        val name = contact?.name ?: call.number?.takeIf { it.isNotBlank() } ?: "Número oculto"
-        val person = Person.Builder().setName(name).setImportant(contact != null).build()
+        val who = CallManager.who(Store.config.value, call.number)
+        val name = who.name
+        val person = Person.Builder().setName(name).setImportant(who.favorite).build()
         val ringing = call.stateCompat == Call.STATE_RINGING
 
         val fullScreen = PendingIntent.getActivity(
@@ -93,7 +127,15 @@ class CercaInCallService : InCallService() {
         val builder = NotificationCompat.Builder(this, if (ringing) CercaApp.CHANNEL_INCOMING else CercaApp.CHANNEL_ONGOING)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(name)
-            .setContentText(if (ringing) "Te está llamando" else "Llamada en curso")
+            .setContentText(
+                when (call.stateCompat) {
+                    Call.STATE_RINGING -> "Te está llamando"
+                    Call.STATE_HOLDING -> "En espera"
+                    Call.STATE_ACTIVE -> "Llamada en curso"
+                    Call.STATE_DISCONNECTING -> "Llamada terminada"
+                    else -> "Llamando…"
+                },
+            )
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

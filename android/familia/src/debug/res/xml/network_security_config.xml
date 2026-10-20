@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solo en debug: permite http:// para probar con el servidor en el PC (IP de la red local o adb reverse → localhost).
+     La versión release no lleva este archivo y sigue exigiendo HTTPS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -1,9 +1,10 @@
 package com.estudiofenix.cerca.setup
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.app.role.RoleManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.Manifest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,20 +12,21 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,10 +51,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.estudiofenix.cerca.calls.Ringer
 import com.estudiofenix.cerca.data.Api
 import com.estudiofenix.cerca.data.Store
 import com.estudiofenix.cerca.data.Sync
 import com.estudiofenix.cerca.location.CercaService
+import com.estudiofenix.cerca.ui.cercaSystemBars
 import com.estudiofenix.cerca.ui.CercaTheme
 import com.estudiofenix.cerca.ui.Palette
 import kotlinx.coroutines.launch
@@ -63,7 +68,7 @@ import kotlinx.coroutines.launch
 class SetupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        cercaSystemBars(highContrast = false) // el asistente siempre va en claro: iconos oscuros aunque el sistema esté en oscuro
         setContent {
             CercaTheme { SetupScreen(onDone = ::finish) }
         }
@@ -82,6 +87,8 @@ private fun SetupScreen(onDone: () -> Unit) {
     val revision by Store.revision.collectAsStateWithLifecycle()
     val roleManager = remember { ctx.getSystemService(RoleManager::class.java) }
     val refresh = { Store.bump(); CercaService.ensure(ctx.applicationContext) }
+    // Cuando Android ya no enseña la ventana de un permiso (se denegó dos veces), solo queda la pantalla de la app
+    val appSettings: () -> Unit = { DeviceChecks.startFirst(ctx, listOf(DeviceChecks.appDetails(ctx))) }
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh() }
     val activityResult = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh() }
@@ -90,6 +97,7 @@ private fun SetupScreen(onDone: () -> Unit) {
     val paired = remember(revision) { Store.isPaired }
     val phonePerms = remember(revision) {
         DeviceChecks.callPermissions(ctx) &&
+            DeviceChecks.granted(ctx, Manifest.permission.READ_CONTACTS) &&
             (Build.VERSION.SDK_INT < 33 || DeviceChecks.granted(ctx, Manifest.permission.POST_NOTIFICATIONS))
     }
     val dialer = remember(revision) { DeviceChecks.isDefaultDialer(ctx) }
@@ -97,6 +105,7 @@ private fun SetupScreen(onDone: () -> Unit) {
     val location = remember(revision) { DeviceChecks.locationPermission(ctx) }
     val battery = remember(revision) { DeviceChecks.ignoringBatteryOptimizations(ctx) }
     val fullScreen = remember(revision) { DeviceChecks.fullScreenAllowed(ctx) }
+    val ringtone = remember(revision) { Ringer.allowed(ctx) }
 
     LazyColumn(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
@@ -116,8 +125,8 @@ private fun SetupScreen(onDone: () -> Unit) {
 
         item {
             Step("2. Permisos de teléfono y avisos", phonePerms,
-                "Para poder llamar y enseñar las llamadas entrantes.") {
-                val list = mutableListOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)
+                "Para poder llamar, ver la agenda y enseñar las llamadas entrantes.", settings = appSettings) {
+                val list = mutableListOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CONTACTS)
                 if (Build.VERSION.SDK_INT >= 33) list += Manifest.permission.POST_NOTIFICATIONS
                 permissions.launch(list.toTypedArray())
             }
@@ -132,7 +141,7 @@ private fun SetupScreen(onDone: () -> Unit) {
                 if (roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
                     activityResult.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME))
                 } else {
-                    ctx.startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+                    DeviceChecks.startFirst(ctx, listOf(Intent(Settings.ACTION_HOME_SETTINGS), Intent(Settings.ACTION_SETTINGS)))
                 }
             }
         }
@@ -145,6 +154,7 @@ private fun SetupScreen(onDone: () -> Unit) {
                     else -> "Para avisarte si sale de la zona y para el botón SOS."
                 },
                 actionLabel = if (location == "foreground") "Permitir siempre" else "Conceder",
+                settings = appSettings,
             ) {
                 if (location == "none") {
                     permissions.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -156,16 +166,34 @@ private fun SetupScreen(onDone: () -> Unit) {
         }
         item {
             Step("6. Batería sin restricciones", battery, "Para que Android no cierre Cerca para ahorrar batería.") {
-                activityResult.launch(
-                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")),
-                )
+                try {
+                    activityResult.launch(
+                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")),
+                    )
+                } catch (_: ActivityNotFoundException) {
+                    // Algunas capas de fabricante quitan esta ventana: la lista general de batería o la de la app
+                    DeviceChecks.startFirst(
+                        ctx, listOf(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS), DeviceChecks.appDetails(ctx)),
+                    )
+                }
             }
         }
         if (Build.VERSION.SDK_INT >= 34) {
             item {
                 Step("7. Llamadas a pantalla completa", fullScreen, "Para que la llamada entrante ocupe toda la pantalla con el móvil bloqueado.") {
-                    ctx.startActivity(DeviceChecks.fullScreenSettings(ctx))
+                    // Si el sistema no tiene esa pantalla, la de la app (antes se cerraba Cerca)
+                    DeviceChecks.startFirst(ctx, listOf(DeviceChecks.fullScreenSettings(ctx), DeviceChecks.appDetails(ctx)))
                 }
+            }
+        }
+
+        item {
+            Step("8. Timbre", ringtone, "Para que la familia pueda poner un timbre fuerte, de los que se oyen bien: " +
+                "busca Cerca y activa «Modificar ajustes del sistema».") {
+                DeviceChecks.startFirst(ctx, listOf(
+                    Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${ctx.packageName}")),
+                    DeviceChecks.appDetails(ctx),
+                ))
             }
         }
 
@@ -221,13 +249,13 @@ private fun PairStep(paired: Boolean) {
     var code by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var confirmUnpair by remember { mutableStateOf(false) }
 
     StepCard("1. Conectar con la familia", paired) {
         if (paired) {
             Text("Conectado como «${Store.seniorName}».", fontSize = 16.sp)
-            OutlinedButton(onClick = {
-                Store.unpair(); Store.bump(); CercaService.ensure(ctx.applicationContext)
-            }) { Text("Desconectar este móvil") }
+            // Se confirma: un toque sin querer borraría los contactos y ajustes de la familia
+            OutlinedButton(onClick = { confirmUnpair = true }) { Text("Desconectar este móvil") }
         } else {
             Text("En el panel web, abre a tu familiar → Ajustes → «Generar código».", fontSize = 16.sp)
             OutlinedTextField(server, { server = it.trim() }, label = { Text("Servidor") }, singleLine = true,
@@ -257,17 +285,41 @@ private fun PairStep(paired: Boolean) {
                     }
                 },
             ) {
-                if (busy) CircularProgressIndicator(Modifier.height(20.dp)) else Text("Conectar")
+                if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Conectar")
             }
         }
     }
+
+    if (confirmUnpair) AlertDialog(
+        onDismissRequest = { confirmUnpair = false },
+        title = { Text("¿Desconectar este móvil?") },
+        text = {
+            Text("Se borrarán de este móvil los contactos y los ajustes de la familia. " +
+                "Para volver a conectarlo hará falta un código nuevo del panel.")
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                confirmUnpair = false
+                Store.unpair(); Store.bump(); CercaService.ensure(ctx.applicationContext)
+            }) { Text("Desconectar", color = Palette.red) }
+        },
+        dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Cancelar") } },
+    )
 }
 
 @Composable
-private fun Step(title: String, ok: Boolean, body: String, actionLabel: String = "Activar", action: () -> Unit) {
+private fun Step(
+    title: String,
+    ok: Boolean,
+    body: String,
+    actionLabel: String = "Activar",
+    settings: (() -> Unit)? = null,
+    action: () -> Unit,
+) {
     StepCard(title, ok) {
         Text(body, fontSize = 16.sp)
         if (!ok) Button(onClick = action) { Text(actionLabel) }
+        if (!ok && settings != null) OutlinedButton(onClick = settings) { Text("No sale la ventana: abrir ajustes de la app") }
     }
 }
 

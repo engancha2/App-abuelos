@@ -314,7 +314,7 @@ async function tabMap(el) {
   $('#locate').onclick = async () => {
     try {
       const r = await api('POST', `/api/seniors/${s.id}/locate`);
-      toast(r.live ? 'Pidiendo la ubicación… aparecerá en unos segundos' : 'El móvil no está conectado ahora; se la pediremos en cuanto se conecte');
+      toast(r.live || r.pushed ? 'Pidiendo la ubicación… aparecerá en unos segundos' : 'El móvil no está conectado ahora; se la pediremos en cuanto se conecte');
     } catch (err) { toast(err.message, true); }
   };
   await refresh();
@@ -334,7 +334,7 @@ function modeLabel(loc) {
 async function tabAlerts(el) {
   const s = state.senior;
   const alerts = await api('GET', `/api/seniors/${s.id}/alerts`);
-  const icons = { sos: '🆘', zone_exit: '📍', zone_enter: '🏠', low_battery: '🔋', offline: '📵', setup_problem: '⚠️' };
+  const icons = { sos: '🆘', zone_exit: '📍', zone_enter: '🏠', low_battery: '🔋', offline: '📵', setup_problem: '⚠️', auto_answer: '📞' };
   el.innerHTML = `
     ${alerts.some((a) => !a.acknowledged) ? `<button class="btn" id="ack" style="margin-bottom:12px">Marcar todo como visto</button>` : ''}
     ${alerts.length ? '' : '<div class="card empty">Sin avisos. ¡Todo tranquilo!</div>'}
@@ -468,9 +468,61 @@ function tabCalls(el) {
     <div class="card">
       <label class="check"><input type="checkbox" id="rep" ${c.allowRepeated ? 'checked' : ''}>
         <span>Dejar pasar si insiste<small>Si un número desconocido llama 2 veces en 5 minutos, la segunda suena (por si es una urgencia: médico, hospital, vecino…).</small></span></label>
+    </div>
+
+    <h2>Si no contesta</h2>
+    <p class="hint">Por si se cae y no llega al móvil: si alguien de Contactos le llama varias veces seguidas (en 15 minutos) y no contesta, la última se contesta sola con manos libres y el volumen al máximo. Antes suena unos segundos, pita al abrir el micrófono y os llega un aviso. Actívalo solo con su permiso.</p>
+    <div class="card">
+      <label class="field"><span>Contestar sola en manos libres</span>
+        <select id="autoans">
+          <option value="0" ${!c.autoAnswerOnCall ? 'selected' : ''}>Nunca (desactivado)</option>
+          ${[2, 3, 4, 5].map((n) => `<option value="${n}" ${c.autoAnswerOnCall === n ? 'selected' : ''}>A la ${n}ª llamada seguida (tras ${n - 1} sin respuesta)</option>`).join('')}
+        </select>
+      </label>
     </div>`;
   el.querySelectorAll('[name=filter]').forEach((r) => (r.onchange = () => change((d) => (d.calls.filter = r.value))));
   $('#rep').onchange = (e) => change((d) => (d.calls.allowRepeated = e.target.checked));
+  $('#autoans').onchange = (e) => change((d) => (d.calls.autoAnswerOnCall = Number(e.target.value)));
+  renderRingtones(el);
+}
+
+// Timbre: los sonidos los fabrica el servidor (src/ringtones.js); su móvil lo pone como tono de llamada
+async function renderRingtones(el) {
+  const box = document.createElement('div');
+  el.append(box);
+  const tones = state.ringtones ??= await api('GET', '/api/ringtones');
+  const c = state.draft.calls;
+  const st = state.senior.status;
+  box.innerHTML = `
+    <h2>Timbre</h2>
+    <p class="hint">Timbres fuertes y fáciles de oír. Su móvil lo pone como tono de llamada al recibir el cambio.</p>
+    ${st?.ringtoneAllowed === false && c.ringtone !== 'system' ? `<div class="card" style="border:2px solid #c62828"><b>Falta un permiso en su móvil.</b> En su móvil: menú de la familia → Asistente → «Timbre» → permitir «Modificar ajustes del sistema».</div>` : ''}
+    ${tones.map((t) => `
+      <label class="option"><input type="radio" name="ring" value="${t.id}" ${c.ringtone === t.id ? 'checked' : ''}>
+        <span style="flex:1"><b>${esc(t.name)}</b><small>${esc(t.description)}</small></span>
+        ${t.id === 'system' ? '' : `<button type="button" class="btn small" data-play="${t.id}">▶ Escuchar</button>`}</label>`).join('')}
+    <div class="card">
+      <label class="check"><input type="checkbox" id="ringmax" ${c.ringMax ? 'checked' : ''}><span>Siempre a todo volumen<small>Su móvil sube el volumen del timbre al máximo cada vez que se sincroniza, aunque lo hayan bajado.</small></span></label>
+      <button type="button" class="btn" id="ringtest">🔔 Hacerlo sonar en su móvil</button>
+      <p class="hint" style="margin:6px 0 0">Suena unos segundos el timbre ya guardado, para comprobar que lo oye.</p>
+    </div>`;
+  let audio = null;
+  box.querySelectorAll('[data-play]').forEach((b) => (b.onclick = (e) => {
+    e.preventDefault();
+    audio?.pause();
+    audio = new Audio(`/ringtones/${b.dataset.play}.wav`);
+    audio.loop = false;
+    audio.play();
+  }));
+  box.querySelectorAll('[name=ring]').forEach((r) => (r.onchange = () => change((d) => (d.calls.ringtone = r.value))));
+  $('#ringmax').onchange = (e) => change((d) => (d.calls.ringMax = e.target.checked));
+  $('#ringtest').onclick = async () => {
+    if (state.dirty) return toast('Guarda antes los cambios: suena el timbre guardado', true);
+    try {
+      const r = await api('POST', `/api/seniors/${state.senior.id}/ring-test`);
+      toast(r.live || r.pushed ? 'Sonando en su móvil…' : 'Su móvil no está conectado ahora mismo', !(r.live || r.pushed));
+    } catch (err) { toast(err.message, true); }
+  };
 }
 
 // ---- Ubicación
@@ -534,19 +586,31 @@ function tabLocation(el) {
 // ---- Apps
 function tabApps(el) {
   const apps = state.senior.apps;
-  const sel = new Set(state.draft.apps);
+  const blocked = new Set(state.draft.blockedApps ?? []);
   el.innerHTML = `
-    <p class="hint">Elige qué aplicaciones aparecen en “Mis aplicaciones” (máximo 12). Las demás quedan ocultas.</p>
-    ${apps.length ? '' : '<div class="card empty">El móvil aún no ha enviado su lista de aplicaciones. Aparecerá cuando se conecte.</div>'}
+    <p class="hint">Por defecto se ven todas en “Aplicaciones”. Desmarca las que quieras bloquear: desaparecen de su móvil. Las que instale más adelante aparecerán solas.</p>
+    ${apps.length ? `
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn small" id="appsall">Mostrar todas</button>
+      <button class="btn small" id="appsnone">Bloquear todas</button>
+      <span class="muted grow" style="text-align:right">${apps.length - apps.filter((a) => blocked.has(a.pkg)).length} de ${apps.length} visibles</span>
+    </div>` : '<div class="card empty">El móvil aún no ha enviado su lista de aplicaciones. Aparecerá cuando se conecte.</div>'}
     <div class="card">
       ${apps.map((a) => `
-        <label class="check"><input type="checkbox" value="${esc(a.pkg)}" ${sel.has(a.pkg) ? 'checked' : ''}>
-          <span>${esc(a.label)}<small>${esc(a.pkg)}</small></span></label>`).join('')}
+        <label class="check"><input type="checkbox" value="${esc(a.pkg)}" ${blocked.has(a.pkg) ? '' : 'checked'}>
+          <span>${esc(a.label)}${blocked.has(a.pkg) ? ' <span class="pill bad">Bloqueada</span>' : ''}<small>${esc(a.pkg)}</small></span></label>`).join('')}
     </div>`;
   el.querySelectorAll('input[type=checkbox]').forEach((cb) => (cb.onchange = () => {
-    if (cb.checked && state.draft.apps.length >= 12) { cb.checked = false; return toast('Máximo 12 aplicaciones', true); }
-    change((d) => { d.apps = d.apps.filter((p) => p !== cb.value); if (cb.checked) d.apps.push(cb.value); });
+    change((d) => {
+      d.blockedApps = (d.blockedApps ?? []).filter((p) => p !== cb.value);
+      if (!cb.checked) d.blockedApps.push(cb.value);
+    });
+    tabApps(el);
   }));
+  const all = $('#appsall');
+  if (all) all.onclick = () => { change((d) => (d.blockedApps = [])); tabApps(el); };
+  const none = $('#appsnone');
+  if (none) none.onclick = () => { change((d) => (d.blockedApps = apps.map((a) => a.pkg))); tabApps(el); };
 }
 
 // ---- Ajustes
@@ -569,7 +633,7 @@ function tabSettings(el) {
         <div class="row"><button class="btn" id="newcode">Emparejar otro móvil</button><button class="btn danger" id="unpair">Desemparejar</button></div>
       ` : `
         <p style="margin:0">Instala la app <b>Cerca</b> en su móvil y, en el asistente, introduce este código:</p>
-        <div id="codebox">${s.pairCode ? `<div class="paircode">${s.pairCode}</div><p class="hint" style="text-align:center">Caduca ${ago(s.pairExpires).replace('hace', 'en')}</p>` : ''}</div>
+        <div id="codebox">${s.pairCode ? `<div class="paircode">${s.pairCode}</div><p class="hint" style="text-align:center">Caduca en ${Math.max(1, Math.round((s.pairExpires - Date.now()) / 60000))} min</p>` : ''}</div>
         <button class="btn primary" id="newcode">${s.pairCode ? 'Generar otro código' : 'Generar código'}</button>
       `}
     </div>
@@ -580,6 +644,9 @@ function tabSettings(el) {
         <input type="range" id="fs" min="0.8" max="1.6" step="0.1" value="${d.ui.fontScale}" style="width:100%"></label>
       <label class="check"><input type="checkbox" id="hc" ${d.ui.highContrast ? 'checked' : ''}><span>Alto contraste<small>Fondo negro y letras blancas, para quien ve poco.</small></span></label>
       <label class="check"><input type="checkbox" id="sd" ${d.ui.showDate ? 'checked' : ''}><span>Mostrar la fecha completa bajo la hora</span></label>
+      <label class="check"><input type="checkbox" id="sc" ${d.ui.showContacts !== false ? 'checked' : ''}><span>Botón «Contactos» en el inicio<small>Abre la agenda completa del móvil. Los de la pestaña Contactos salen siempre en grande en el inicio.</small></span></label>
+      <label class="check"><input type="checkbox" id="sm" ${d.ui.showMenuButton !== false ? 'checked' : ''}><span>Rueda ⚙ del «Menú de la familia» en Aplicaciones<small>Quítala cuando ya esté todo configurado. El menú se sigue abriendo manteniendo pulsada la hora 3 segundos (con el PIN, si lo hay).</small></span></label>
+      <label class="check"><input type="checkbox" id="ss" ${d.ui.showSms ? 'checked' : ''}><span>Botón «Mensajes» (SMS)<small>Añade «Mensajes» en el inicio y «Mensaje» en cada contacto. Usa la app de SMS de su móvil.</small></span></label>
     </div>
 
     <h2>PIN de ajustes</h2>
@@ -627,6 +694,9 @@ function tabSettings(el) {
   $('#fs').oninput = (e) => { $('#fsv').textContent = `${Math.round(e.target.value * 100)}%`; change((x) => (x.ui.fontScale = Number(e.target.value))); };
   $('#hc').onchange = (e) => change((x) => (x.ui.highContrast = e.target.checked));
   $('#sd').onchange = (e) => change((x) => (x.ui.showDate = e.target.checked));
+  $('#sc').onchange = (e) => change((x) => (x.ui.showContacts = e.target.checked));
+  $('#sm').onchange = (e) => change((x) => (x.ui.showMenuButton = e.target.checked));
+  $('#ss').onchange = (e) => change((x) => (x.ui.showSms = e.target.checked));
   $('#lb').onchange = (e) => change((x) => (x.alerts.lowBatteryPercent = Number(e.target.value)));
   $('#oh').onchange = (e) => change((x) => (x.alerts.offlineHours = Number(e.target.value)));
 
@@ -656,9 +726,13 @@ function tabSettings(el) {
 
 function pollPairing() {
   clearInterval(state.poll);
+  const expires = state.senior.pairExpires;
   state.poll = setInterval(async () => {
+    if (Date.now() > expires) { clearInterval(state.poll); return; } // caducado sin usar
     const fresh = await api('GET', `/api/seniors/${state.senior.id}`).catch(() => null);
-    if (fresh?.paired) {
+    // El servidor borra el código al usarlo. Mirar solo "paired" no vale: con otro móvil ya emparejado
+    // (al "Emparejar otro móvil") saldría "emparejado" a los 3 s sin serlo
+    if (fresh?.paired && !fresh.pairCode) {
       clearInterval(state.poll);
       state.senior = fresh;
       if (!state.dirty) state.draft = structuredClone(fresh.config);

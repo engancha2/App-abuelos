@@ -21,6 +21,7 @@ import com.estudiofenix.cerca.data.LocationConfig
 import com.estudiofenix.cerca.data.Store
 import com.estudiofenix.cerca.data.Sync
 import com.estudiofenix.cerca.data.WsMessage
+import com.estudiofenix.cerca.calls.Ringer
 import com.estudiofenix.cerca.data.json
 import com.estudiofenix.cerca.home.HomeActivity
 import com.estudiofenix.cerca.setup.DeviceChecks
@@ -257,6 +258,10 @@ class CercaService : LifecycleService() {
                 val msg = runCatching { json.decodeFromString(WsMessage.serializer(), text) }.getOrNull() ?: return
                 when (msg.type) {
                     "locate" -> lifecycleScope.launch { Locator.locateAndSend(applicationContext, "request") }
+                    // "Hacerlo sonar en su móvil" desde la app de la familia o el panel
+                    "ring" -> lifecycleScope.launch {
+                        Ringer.preview(applicationContext, msg.ringtone ?: Store.config.value.calls.ringtone)
+                    }
                     "config", "hello" -> {
                         val version = msg.version ?: msg.configVersion
                         if (version != null && version != Store.configVersion) {

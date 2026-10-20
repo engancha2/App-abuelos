@@ -77,6 +77,15 @@ object Api {
         call<Unit>("POST", "/api/device/alert", json.encodeToString(AlertRequest.serializer(), req), null)
     }
 
+    suspend fun setFavorite(name: String, phone: String, favorite: Boolean) {
+        val body = buildJsonObject {
+            put("name", name)
+            put("phone", phone)
+            put("favorite", favorite)
+        }.toString()
+        call<Unit>("POST", "/api/device/favorites", body, null)
+    }
+
     suspend fun download(path: String, dest: File) = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url(path)).build()
         client.newCall(req).execute().use { res ->

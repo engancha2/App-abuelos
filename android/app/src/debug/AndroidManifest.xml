@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Solo en debug: llamadas de prueba (debug/TestCalls.kt) -->
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+
+    <!-- Solo en debug: ver res/xml/network_security_config.xml -->
+    <application android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- Las llamadas de prueba son "self-managed": así también llegan a la pantalla de llamada de Cerca.
+             La app de verdad no lleva esto (las de otras apps, como WhatsApp, se ignoran en CercaInCallService). -->
+        <service android:name=".calls.CercaInCallService" tools:node="merge">
+            <meta-data android:name="android.telecom.INCLUDE_SELF_MANAGED_CALLS" android:value="true" />
+        </service>
+
+        <service
+            android:name=".debug.TestConnectionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".debug.TestCallReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="com.estudiofenix.cerca.TEST_CALL" />
+                <action android:name="com.estudiofenix.cerca.TEST_HANGUP" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

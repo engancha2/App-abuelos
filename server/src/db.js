@@ -81,7 +81,18 @@ export function openDb(dataDir) {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    -- Móviles de la familia (app Cerca Familia) que reciben los avisos por Firebase
+    CREATE TABLE IF NOT EXISTS fcm_tokens (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      updated_at INTEGER NOT NULL
+    );
   `);
+
+  // Migraciones de columnas en bases de datos ya creadas
+  const seniorCols = db.prepare(`PRAGMA table_info(seniors)`).all().map((c) => c.name);
+  if (!seniorCols.includes('fcm_token')) db.exec(`ALTER TABLE seniors ADD COLUMN fcm_token TEXT`); // para despertar al móvil del mayor
   return db;
 }
 
@@ -91,6 +102,9 @@ export const DEFAULT_CONFIG = Object.freeze({
   calls: {
     filter: 'silence_unknown',  // all | silence_unknown | block_unknown
     allowRepeated: true,        // un desconocido que insiste 2 veces en 5 min pasa (urgencias)
+    autoAnswerOnCall: 0,        // si un favorito llama N veces seguidas sin respuesta, la N-ésima se contesta sola en manos libres (0 = no)
+    ringtone: 'system',         // timbre (src/ringtones.js); "system" = el que ya tenga el móvil
+    ringMax: false,             // timbre siempre a todo volumen
   },
   location: {
     mode: 'off',                // off | continuous | interval | zone
@@ -100,11 +114,14 @@ export const DEFAULT_CONFIG = Object.freeze({
     zones: [],                  // [{ id, name, lat, lng, radius }]
     retentionDays: 7,
   },
-  apps: [],                     // paquetes visibles en "Mis aplicaciones"
+  blockedApps: [],              // paquetes ocultos en "Aplicaciones" (por defecto se ven todas)
   ui: {
     fontScale: 1.0,
     highContrast: false,
     showDate: true,
+    showContacts: true,         // botón "Contactos" (agenda del móvil) en el inicio
+    showMenuButton: true,       // rueda ⚙ del "Menú de la familia" junto al título de "Aplicaciones"
+    showSms: false,             // botón "Mensajes" (SMS) en el inicio y "Mensaje" en cada contacto
   },
   pinHash: null,                // sha256(`cerca:${seniorId}:${pin}`)
   alerts: {

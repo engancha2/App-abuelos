@@ -18,11 +18,12 @@ object Sos {
     /**
      * Llama al contacto de emergencia y, en paralelo, manda la alerta con la ubicación a la familia.
      * La alerta se reintenta durante unos minutos si no hay cobertura.
+     * Devuelve true si ha empezado la llamada; si no, la pantalla de inicio avisa de que se está avisando a la familia.
      */
-    fun trigger(ctx: Context) {
+    fun trigger(ctx: Context): Boolean {
         val app = ctx.applicationContext
         val contact = Store.config.value.sosContact
-        if (contact != null) CallManager.placeCall(ctx, contact.phone)
+        val calling = contact != null && CallManager.placeCall(ctx, contact.phone)
 
         CercaApp.scope.launch {
             val loc = Locator.current(app, timeoutMs = 25_000)
@@ -38,5 +39,6 @@ object Sos {
                 }
             }
         }
+        return calling
     }
 }

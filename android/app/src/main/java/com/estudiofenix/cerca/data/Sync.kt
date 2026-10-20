@@ -12,6 +12,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.estudiofenix.cerca.BuildConfig
+import com.estudiofenix.cerca.calls.Ringer
 import com.estudiofenix.cerca.location.CercaService
 import com.estudiofenix.cerca.location.Locator
 import com.estudiofenix.cerca.setup.DeviceChecks
@@ -38,6 +39,8 @@ object Sync {
             if (forceConfig || hb.configVersion != Store.configVersion) pullConfig(ctx)
             if (hb.locate) Locator.locateAndSend(ctx, "request")
             flushLocations()
+            // El timbre elegido por la familia (y el volumen, si lo han bajado)
+            Ringer.apply(ctx, Store.config.value.calls)
         } catch (e: ApiException) {
             if (e.code == 401) {
                 Log.w(TAG, "El servidor ya no reconoce este móvil: se desempareja")
@@ -86,6 +89,7 @@ object Sync {
             locationEnabled = DeviceChecks.locationEnabled(ctx),
             appVersion = BuildConfig.VERSION_NAME,
             apps = if (sendApps) apps else null,
+            ringtoneAllowed = Ringer.allowed(ctx),
         )
     }
 

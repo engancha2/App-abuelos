@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { RINGTONE_IDS } from './ringtones.js';
 
 export const now = () => Date.now();
 export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -35,6 +36,12 @@ export function haversineMeters(lat1, lng1, lat2, lng2) {
   const dLng = toRad(lng2 - lng1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/** Igual que Phone.matchKey en Android: compara por los últimos 9 dígitos (+34 600 11 22 33 == 600112233). */
+export function phoneKey(number) {
+  const digits = String(number ?? '').replace(/\D/g, '');
+  return digits.length < 3 ? null : digits.slice(-9);
 }
 
 const clamp = (n, min, max, fallback) => {
@@ -77,12 +84,20 @@ export function sanitizeConfig(input, defaults) {
   if (mode === 'zone' && zones.length === 0) throw new Error('El modo "salir de zona" necesita al menos una zona');
 
   const filter = ['all', 'silence_unknown', 'block_unknown'].includes(c.calls?.filter) ? c.calls.filter : defaults.calls.filter;
+  // Nunca a la primera llamada: 0 (desactivado) o entre 2 y 10
+  const autoAnswerOnCall = clampInt(c.calls?.autoAnswerOnCall, 0, 10, defaults.calls.autoAnswerOnCall);
   const sosContactId = contacts.some((x) => x.id === c.sosContactId) ? c.sosContactId : (contacts[0]?.id ?? null);
 
   return {
     contacts,
     sosContactId,
-    calls: { filter, allowRepeated: c.calls?.allowRepeated !== false },
+    calls: {
+      filter,
+      allowRepeated: c.calls?.allowRepeated !== false,
+      autoAnswerOnCall: autoAnswerOnCall === 1 ? 2 : autoAnswerOnCall,
+      ringtone: RINGTONE_IDS.includes(c.calls?.ringtone) ? c.calls.ringtone : defaults.calls.ringtone,
+      ringMax: c.calls?.ringMax === true,
+    },
     location: {
       mode,
       continuousSeconds: clampInt(c.location?.continuousSeconds, 10, 300, defaults.location.continuousSeconds),
@@ -91,11 +106,14 @@ export function sanitizeConfig(input, defaults) {
       zones,
       retentionDays: clampInt(c.location?.retentionDays, 1, 90, defaults.location.retentionDays),
     },
-    apps: (Array.isArray(c.apps) ? c.apps : []).filter((p) => /^[\w.]{3,150}$/.test(p)).slice(0, 12),
+    blockedApps: [...new Set((Array.isArray(c.blockedApps) ? c.blockedApps : []).filter((p) => /^[\w.]{3,150}$/.test(p)))].slice(0, 300),
     ui: {
       fontScale: clamp(c.ui?.fontScale, 0.8, 1.6, 1.0),
       highContrast: Boolean(c.ui?.highContrast),
       showDate: c.ui?.showDate !== false,
+      showContacts: c.ui?.showContacts !== false,
+      showMenuButton: c.ui?.showMenuButton !== false,
+      showSms: c.ui?.showSms === true, // desactivado salvo que la familia lo active
     },
     pinHash: typeof c.pinHash === 'string' && /^[a-f0-9]{64}$/.test(c.pinHash) ? c.pinHash : null,
     alerts: {

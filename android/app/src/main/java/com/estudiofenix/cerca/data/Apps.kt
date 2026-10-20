@@ -25,7 +25,12 @@ object Apps {
 
     fun launch(ctx: Context, pkg: String): Boolean {
         val intent = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return false
-        ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        return true
+        // La app puede haberse desinstalado o desactivado con la pantalla abierta: que no se cierre Cerca
+        return try {
+            ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 }

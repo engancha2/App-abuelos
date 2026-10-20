@@ -10,9 +10,10 @@ data class Config(
     val sosContactId: String? = null,
     val calls: CallsConfig = CallsConfig(),
     val location: LocationConfig = LocationConfig(),
-    val apps: List<String> = emptyList(),
+    val blockedApps: List<String> = emptyList(),   // por defecto se ven todas; la familia oculta las que quiera
     val ui: UiConfig = UiConfig(),
-    val pinHash: String? = null,
+    val pinHash: String? = null,      // solo llega al móvil de la persona mayor
+    val hasPin: Boolean = false,      // solo llega a la familia (en vez del hash); el servidor lo ignora al guardar
     val alerts: AlertsConfig = AlertsConfig(),
 ) {
     val sosContact: Contact? get() = contacts.firstOrNull { it.id == sosContactId } ?: contacts.firstOrNull()
@@ -36,6 +37,11 @@ data class Contact(
 data class CallsConfig(
     val filter: String = "all",           // all | silence_unknown | block_unknown
     val allowRepeated: Boolean = true,
+    // Número de la llamada seguida de un favorito que se contesta sola en manos libres (con 3: dos sin respuesta
+    // y la tercera se contesta sola). P. ej. se ha caído y no llega al móvil. 0 = desactivado; si no, entre 2 y 10.
+    val autoAnswerOnCall: Int = 0,
+    val ringtone: String = "system",   // timbre de server/src/ringtones.js; "system" = el que ya tenga el móvil
+    val ringMax: Boolean = false,      // timbre siempre a todo volumen
 )
 
 @Serializable
@@ -62,6 +68,9 @@ data class UiConfig(
     val fontScale: Float = 1f,
     val highContrast: Boolean = false,
     val showDate: Boolean = true,
+    val showContacts: Boolean = true,     // botón "Contactos" (agenda del móvil) en el inicio
+    val showMenuButton: Boolean = true,   // rueda ⚙ del "Menú de la familia" junto al título de "Aplicaciones"
+    val showSms: Boolean = false,         // botón "Mensajes" (SMS) en el inicio y "Mensaje" en cada contacto
 )
 
 @Serializable
@@ -104,6 +113,7 @@ data class Heartbeat(
     val locationEnabled: Boolean,
     val appVersion: String,
     val apps: List<AppEntry>? = null,
+    val ringtoneAllowed: Boolean? = null, // false: la familia eligió timbre pero falta "Modificar ajustes del sistema"
 )
 
 @Serializable
@@ -112,10 +122,11 @@ data class AlertRequest(
     val lat: Double? = null,
     val lng: Double? = null,
     val zoneName: String? = null,
+    val contactName: String? = null,   // auto_answer: quién llamaba
 )
 
 @Serializable
-data class WsMessage(val type: String, val version: Int? = null, val configVersion: Int? = null)
+data class WsMessage(val type: String, val version: Int? = null, val configVersion: Int? = null, val ringtone: String? = null)
 
 val json = Json {
     ignoreUnknownKeys = true
