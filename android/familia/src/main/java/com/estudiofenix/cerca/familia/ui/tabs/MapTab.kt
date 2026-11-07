@@ -53,6 +53,7 @@ import com.estudiofenix.cerca.familia.data.friendlyError
 import com.estudiofenix.cerca.familia.ui.EmptyState
 import com.estudiofenix.cerca.familia.ui.FamiliaColors
 import com.estudiofenix.cerca.familia.ui.Hint
+import com.estudiofenix.cerca.familia.ui.PremiumLock
 import com.estudiofenix.cerca.familia.ui.SectionCard
 import com.estudiofenix.cerca.familia.ui.SeniorViewModel
 import com.estudiofenix.cerca.familia.ui.StatusDot
@@ -230,8 +231,10 @@ fun MapTab(vm: SeniorViewModel) {
             ) { Text("Cómo llegar") }
         }
 
-        // ---- Recorrido
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // ---- Recorrido (de pago: sin plan, solo la última posición)
+        if (!vm.premium) {
+            PremiumLock(vm, "Historial de recorridos", "Por dónde ha ido las últimas horas o días. Ahora solo se ve su última posición.")
+        } else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Recorrido", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 RANGES.forEach { (h, label) ->

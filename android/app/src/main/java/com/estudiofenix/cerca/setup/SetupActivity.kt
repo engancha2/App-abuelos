@@ -113,7 +113,7 @@ private fun SetupScreen(onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("Configurar Cerca", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("Configurar Grandpa", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text(
                 "Hazlo tú (la familia) con el móvil en la mano. Puedes volver aquí cuando quieras " +
                     "manteniendo pulsada la hora 3 segundos en la pantalla de inicio.",
@@ -132,12 +132,12 @@ private fun SetupScreen(onDone: () -> Unit) {
             }
         }
         item {
-            Step("3. App de teléfono", dialer, "Las llamadas pasan por Cerca: pantalla grande y filtro de desconocidos.") {
+            Step("3. App de teléfono", dialer, "Las llamadas pasan por Grandpa: pantalla grande y filtro de desconocidos.") {
                 activityResult.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER))
             }
         }
         item {
-            Step("4. Pantalla de inicio", home, "Al pulsar el botón de inicio siempre aparece Cerca.") {
+            Step("4. Pantalla de inicio", home, "Al pulsar el botón de inicio siempre aparece Grandpa.") {
                 if (roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
                     activityResult.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME))
                 } else {
@@ -165,7 +165,7 @@ private fun SetupScreen(onDone: () -> Unit) {
             }
         }
         item {
-            Step("6. Batería sin restricciones", battery, "Para que Android no cierre Cerca para ahorrar batería.") {
+            Step("6. Batería sin restricciones", battery, "Para que Android no cierre Grandpa para ahorrar batería.") {
                 try {
                     activityResult.launch(
                         Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")),
@@ -189,7 +189,7 @@ private fun SetupScreen(onDone: () -> Unit) {
 
         item {
             Step("8. Timbre", ringtone, "Para que la familia pueda poner un timbre fuerte, de los que se oyen bien: " +
-                "busca Cerca y activa «Modificar ajustes del sistema».") {
+                "busca Grandpa y activa «Modificar ajustes del sistema».") {
                 DeviceChecks.startFirst(ctx, listOf(
                     Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${ctx.packageName}")),
                     DeviceChecks.appDetails(ctx),
@@ -208,7 +208,7 @@ private fun SetupScreen(onDone: () -> Unit) {
                 )
             }
             item {
-                ManualStep("xiaomi_autostart", "Autoinicio", "Activa «Autoinicio» para Cerca.", revision) {
+                ManualStep("xiaomi_autostart", "Autoinicio", "Activa «Autoinicio» para Grandpa.", revision) {
                     DeviceChecks.startFirst(ctx, DeviceChecks.xiaomiAutostartIntents(ctx))
                 }
             }
@@ -227,7 +227,7 @@ private fun SetupScreen(onDone: () -> Unit) {
             item {
                 ManualStep(
                     "xiaomi_lock", "Bloquear en recientes",
-                    "Abre la vista de apps recientes, mantén pulsada la tarjeta de Cerca y toca el candado.", revision, action = null,
+                    "Abre la vista de apps recientes, mantén pulsada la tarjeta de Grandpa y toca el candado.", revision, action = null,
                 )
             }
         }

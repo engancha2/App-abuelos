@@ -53,6 +53,7 @@ import com.estudiofenix.cerca.data.LocationConfig
 import com.estudiofenix.cerca.data.Zone
 import com.estudiofenix.cerca.familia.ui.FamiliaColors
 import com.estudiofenix.cerca.familia.ui.Hint
+import com.estudiofenix.cerca.familia.ui.PremiumLock
 import com.estudiofenix.cerca.familia.ui.SectionCard
 import com.estudiofenix.cerca.familia.ui.SectionTitle
 import com.estudiofenix.cerca.familia.ui.SeniorViewModel
@@ -97,10 +98,11 @@ fun LocationTab(vm: SeniorViewModel) {
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ModeOption(
                 selected = loc.mode == "zone",
-                title = "Solo si sale de una zona",
+                title = if (vm.premium) "Solo si sale de una zona" else "🔒  Solo si sale de una zona",
                 description = "Avisa cuando sale de casa, del barrio… y mientras esté fuera envía su posición con frecuencia. " +
                     "Lo que menos batería gasta.",
-                onSelect = { edit { it.copy(mode = "zone") } },
+                // De pago: sin plan, en vez de elegirlo se enseñan los planes
+                onSelect = { if (vm.premium) edit { it.copy(mode = "zone") } else vm.paywall = true },
             ) {
                 NumberField("Mientras está fuera, cada", "segundos", loc.outsideZoneSeconds, OUTSIDE_SECONDS) { v ->
                     edit { it.copy(outsideZoneSeconds = v) }
@@ -130,12 +132,27 @@ fun LocationTab(vm: SeniorViewModel) {
             )
         }
         // El servidor no guarda este modo sin zonas: mejor avisar antes de que pulse "Guardar"
-        if (loc.mode == "zone" && loc.zones.isEmpty()) {
+        if (!vm.premium && loc.mode == "zone") {
+            Warning("Sin suscripción este modo está desactivado y su móvil no envía la ubicación solo. " +
+                "Elige otro modo o suscríbete para que vuelva tal y como estaba.")
+        } else if (loc.mode == "zone" && loc.zones.isEmpty()) {
             Warning("Este modo necesita al menos una zona segura. Añádela tocando el mapa de abajo; si no, no se podrá guardar.")
         }
 
         // ---- Zonas seguras
         SectionTitle("Zonas seguras")
+        if (!vm.premium) {
+            PremiumLock(
+                vm, "Zonas seguras",
+                "Aviso al momento si sale de casa, del barrio o del centro de día." +
+                    if (loc.zones.isNotEmpty()) " Tus ${loc.zones.size} zonas están guardadas y vuelven al suscribirte." else "",
+            )
+            SectionTitle("Privacidad")
+            NumberField("Borrar el historial de posiciones pasados", "días", loc.retentionDays, RETENTION_DAYS) { v ->
+                edit { it.copy(retentionDays = v) }
+            }
+            return@Column
+        }
         Hint(
             "Toca el mapa para añadir una zona (acércalo con dos dedos para ponerla en su sitio). " +
                 "En los modos \"cada cierto tiempo\" y \"continuo\" también te avisa si sale de ellas." +

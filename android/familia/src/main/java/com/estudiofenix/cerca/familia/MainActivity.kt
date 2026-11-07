@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.estudiofenix.cerca.familia.data.Billing
 import com.estudiofenix.cerca.familia.data.Session
 import com.estudiofenix.cerca.familia.ui.FamiliaTheme
 import com.estudiofenix.cerca.familia.ui.LoginScreen
@@ -42,6 +43,8 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(req) {
                     req?.let { (id, t) -> seniorId = id; tab = t; requested.value = null }
                 }
+                // Compras que no llegaron al servidor (sin conexión al pagar…): se mandan al entrar
+                LaunchedEffect(loggedIn) { if (loggedIn) runCatching { Billing.syncPending() } }
 
                 when {
                     !loggedIn -> LoginScreen()

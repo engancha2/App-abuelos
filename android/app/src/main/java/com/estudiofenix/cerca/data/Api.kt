@@ -59,6 +59,7 @@ object Api {
             put("device", buildJsonObject {
                 put("model", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("android", Build.VERSION.RELEASE)
+                Store.deviceId?.let { put("id", it) } // un mes gratis por móvil
             })
         }.toString()
         return call("POST", "/api/device/pair", body, PairResponse.serializer(), auth = false)!!

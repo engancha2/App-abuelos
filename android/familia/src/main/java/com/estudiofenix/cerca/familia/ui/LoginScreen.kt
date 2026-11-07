@@ -57,10 +57,10 @@ fun LoginScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Cerca Familia", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
+        Text("Find My Grandpa", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 32.dp))
         Text(
-            if (register) "Crea tu cuenta para cuidar del móvil de tu familiar." else "Entra con tu cuenta de Cerca.",
+            if (register) "Crea tu cuenta para cuidar del móvil de tu familiar." else "Entra con tu cuenta.",
             textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 

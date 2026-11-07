@@ -73,7 +73,7 @@ object DeviceChecks {
     fun xiaomiBatteryIntents(ctx: Context): List<Intent> = listOf(
         Intent().setComponent(ComponentName("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"))
             .putExtra("package_name", ctx.packageName)
-            .putExtra("package_label", "Cerca"),
+            .putExtra("package_label", "Grandpa"),
         appDetails(ctx),
     )
 

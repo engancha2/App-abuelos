@@ -12,6 +12,7 @@ playLocation = "21.3.0"
 work = "2.10.0"
 osmdroid = "6.1.20"
 coil = "2.7.0"
+billing = "8.3.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -32,6 +33,7 @@ androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 osmdroid = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+play-billing = { module = "com.android.billingclient:billing", version.ref = "billing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

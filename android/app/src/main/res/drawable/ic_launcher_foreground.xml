@@ -1,7 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de Grandpa: la cara de un abuelo (gafas redondas, bigote blanco y pelo canoso a los lados).
+     Todo dentro de la zona segura de los iconos adaptables (círculo de 66 dp en el centro de 108). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Orejas -->
+    <path android:fillColor="#E8B48A" android:pathData="M25,55a5,5 0,1 0,10 0a5,5 0,1 0,-10 0z" />
+    <path android:fillColor="#E8B48A" android:pathData="M73,55a5,5 0,1 0,10 0a5,5 0,1 0,-10 0z" />
+    <!-- Cabeza -->
+    <path android:fillColor="#F4CDA5" android:pathData="M30,53a24,24 0,1 0,48 0a24,24 0,1 0,-48 0z" />
+    <!-- Pelo canoso a los lados -->
+    <path android:fillColor="#FFFFFF" android:pathData="M26,45a6,8 0,1 0,12 0a6,8 0,1 0,-12 0z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M70,45a6,8 0,1 0,12 0a6,8 0,1 0,-12 0z" />
+    <!-- Cejas -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M39,40Q45,36.5 51,40" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M57,40Q63,36.5 69,40" />
+    <!-- Ojos -->
+    <path android:fillColor="#263238" android:pathData="M43.2,50.5a1.8,1.8 0,1 0,3.6 0a1.8,1.8 0,1 0,-3.6 0z" />
+    <path android:fillColor="#263238" android:pathData="M61.2,50.5a1.8,1.8 0,1 0,3.6 0a1.8,1.8 0,1 0,-3.6 0z" />
+    <!-- Gafas redondas -->
+    <path android:strokeColor="#263238" android:strokeWidth="2.6"
+        android:pathData="M38,50a7,7 0,1 0,14 0a7,7 0,1 0,-14 0z" />
+    <path android:strokeColor="#263238" android:strokeWidth="2.6"
+        android:pathData="M56,50a7,7 0,1 0,14 0a7,7 0,1 0,-14 0z" />
+    <path android:strokeColor="#263238" android:strokeWidth="2.4" android:strokeLineCap="round"
+        android:pathData="M52,49Q54,47.5 56,49" />
+    <!-- Nariz -->
+    <path android:fillColor="#E39E78" android:pathData="M50,58a4,3.5 0,1 0,8 0a4,3.5 0,1 0,-8 0z" />
+    <!-- Sonrisa -->
+    <path android:strokeColor="#9C5B3F" android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M49,70.5Q54,73.5 59,70.5" />
+    <!-- Bigote -->
     <path android:fillColor="#FFFFFF"
-        android:pathData="M54,80C54,80 30,64.5 30,46A16,16 0,0 1,54 32A16,16 0,0 1,78 46C78,64.5 54,80 54,80Z" />
-    <path android:fillColor="#1F6F5C"
-        android:pathData="M54,47m-7.5,0a7.5,7.5 0,1 1,15 0a7.5,7.5 0,1 1,-15 0" />
+        android:pathData="M54,61C50,59 44,59 40,62C38,64 39,68 42,68C46,68 50,66 54,64C58,66 62,68 66,68C69,68 70,64 68,62C64,59 58,59 54,61Z" />
 </vector>

@@ -88,11 +88,42 @@ export function openDb(dataDir) {
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       updated_at INTEGER NOT NULL
     );
+
+    -- Mes gratis por móvil del mayor (src/billing.js): sobrevive a borrar a la persona y volver a crearla
+    CREATE TABLE IF NOT EXISTS trials (
+      device_hash TEXT PRIMARY KEY,
+      started_at INTEGER NOT NULL
+    );
+
+    -- Suscripciones de Google Play. Una suscripción es para una persona mayor (la paga cualquiera de su familia).
+    -- Si se borra a la persona, la suscripción queda suelta y se puede pasar a otra ("Recuperar compra").
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      purchase_token TEXT PRIMARY KEY,
+      senior_id INTEGER REFERENCES seniors(id) ON DELETE SET NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      product_id TEXT,
+      base_plan_id TEXT,
+      state TEXT NOT NULL,
+      entitled INTEGER NOT NULL DEFAULT 0,
+      expires_at INTEGER,
+      auto_renew INTEGER NOT NULL DEFAULT 0,
+      test INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_subs_senior ON subscriptions(senior_id, expires_at);
   `);
 
   // Migraciones de columnas en bases de datos ya creadas
   const seniorCols = db.prepare(`PRAGMA table_info(seniors)`).all().map((c) => c.name);
   if (!seniorCols.includes('fcm_token')) db.exec(`ALTER TABLE seniors ADD COLUMN fcm_token TEXT`); // para despertar al móvil del mayor
+  // Mes gratis: cuándo empezó (al emparejar), si ya se ha avisado de que se acaba (1) o de que se ha acabado (2)
+  if (!seniorCols.includes('trial_started_at')) db.exec(`ALTER TABLE seniors ADD COLUMN trial_started_at INTEGER`);
+  if (!seniorCols.includes('trial_reminded')) db.exec(`ALTER TABLE seniors ADD COLUMN trial_reminded INTEGER NOT NULL DEFAULT 0`);
+  // Con qué plan se le mandó la configuración a su móvil ('premium' | 'free'): si cambia, hay que volver a mandársela
+  if (!seniorCols.includes('plan_applied')) db.exec(`ALTER TABLE seniors ADD COLUMN plan_applied TEXT`);
+  // Personas ya emparejadas antes de que existiera el mes gratis: empieza ahora
+  db.prepare(`UPDATE seniors SET trial_started_at = ? WHERE trial_started_at IS NULL AND device_token_hash IS NOT NULL`).run(Date.now());
   return db;
 }
 

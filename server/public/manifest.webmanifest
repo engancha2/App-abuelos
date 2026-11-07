@@ -1,6 +1,6 @@
 {
-  "name": "Cerca · Panel familiar",
-  "short_name": "Cerca",
+  "name": "Find My Grandpa · Panel familiar",
+  "short_name": "Find My Grandpa",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f6f4ef",

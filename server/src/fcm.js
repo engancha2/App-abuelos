@@ -1,6 +1,6 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createGoogleAuth } from './google.js';
 
 /**
  * Notificaciones con Firebase Cloud Messaging (API HTTP v1), sin dependencias.
@@ -12,38 +12,16 @@ export function createFcm({ credentials, log }) {
     log.info('FCM desactivado: falta la clave de la cuenta de servicio de Firebase');
     return { enabled: false, send: async () => 'disabled' };
   }
-  const { project_id: projectId, client_email: clientEmail, private_key: privateKey } = credentials;
-  let cached = null; // { token, exp }
-
-  async function accessToken() {
-    if (cached && cached.exp > Date.now() + 60_000) return cached.token;
-    const iat = Math.floor(Date.now() / 1000);
-    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-    const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
-      iss: clientEmail,
-      scope: 'https://www.googleapis.com/auth/firebase.messaging',
-      aud: 'https://oauth2.googleapis.com/token',
-      iat,
-      exp: iat + 3600,
-    })}`;
-    const signature = crypto.sign('RSA-SHA256', Buffer.from(unsigned), privateKey).toString('base64url');
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${signature}` }),
-    });
-    if (!res.ok) throw new Error(`OAuth ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const data = await res.json();
-    cached = { token: data.access_token, exp: Date.now() + data.expires_in * 1000 };
-    return cached.token;
-  }
+  const { project_id: projectId } = credentials;
+  const accessToken = createGoogleAuth(credentials);
+  const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
   /** Envía un mensaje FCM. Devuelve 'ok', 'invalid' (el token ya no sirve: hay que borrarlo) o 'error'. */
   async function send(message) {
     try {
       const res = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${await accessToken()}`, 'content-type': 'application/json' },
+        headers: { authorization: `Bearer ${await accessToken(SCOPE)}`, 'content-type': 'application/json' },
         body: JSON.stringify({ message }),
       });
       if (res.ok) return 'ok';

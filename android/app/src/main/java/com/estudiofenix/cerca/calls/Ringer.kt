@@ -68,7 +68,7 @@ object Ringer {
 
     /** El archivo del timbre en la carpeta de tonos del móvil (Ringtones/Cerca); si no está, se descarga del servidor. */
     private suspend fun toneUri(ctx: Context, id: String): Uri? = withContext(Dispatchers.IO) {
-        val name = "cerca_$id.wav"
+        val name = "grandpa_$id.wav"
         val resolver = ctx.contentResolver
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         resolver.query(collection, arrayOf(MediaStore.Audio.Media._ID), "${MediaStore.Audio.Media.DISPLAY_NAME} = ?", arrayOf(name), null)
@@ -78,9 +78,9 @@ object Ringer {
         Api.download("/ringtones/$id.wav", tmp)
         val values = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, name)
-            put(MediaStore.Audio.Media.TITLE, "Cerca · $id")
+            put(MediaStore.Audio.Media.TITLE, "Grandpa · $id")
             put(MediaStore.Audio.Media.MIME_TYPE, "audio/wav")
-            put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_RINGTONES}/Cerca")
+            put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_RINGTONES}/Grandpa")
             put(MediaStore.Audio.Media.IS_RINGTONE, 1)
             put(MediaStore.Audio.Media.IS_PENDING, 1)
         }

@@ -84,6 +84,8 @@ fun SeniorScreen(seniorId: Long, tab: String, onTab: (String) -> Unit, onBack: (
                         })
                     }
                 }
+                // Mes gratis a punto de acabar o ya acabado
+                PlanBanner(vm)
             }
         },
         bottomBar = { if (vm.dirty) SaveBar(vm) },
@@ -105,6 +107,8 @@ fun SeniorScreen(seniorId: Long, tab: String, onTab: (String) -> Unit, onBack: (
             }
         }
     }
+
+    PaywallSheet(vm)
 
     if (confirmLeave) {
         AlertDialog(

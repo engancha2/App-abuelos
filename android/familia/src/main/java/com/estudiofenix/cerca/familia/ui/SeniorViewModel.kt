@@ -5,8 +5,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.billingclient.api.Purchase
 import com.estudiofenix.cerca.data.Config
+import com.estudiofenix.cerca.familia.data.Billing
 import com.estudiofenix.cerca.familia.data.FamilyApi
+import com.estudiofenix.cerca.familia.data.Plan
 import com.estudiofenix.cerca.familia.data.SeniorDetail
 import com.estudiofenix.cerca.familia.data.friendlyError
 import kotlinx.coroutines.CancellationException
@@ -40,8 +43,95 @@ class SeniorViewModel(val seniorId: Long) : ViewModel() {
     /** Mensajes cortos para la barra de abajo ("Guardado y enviado al móvil", errores…). */
     val messages = _messages.receiveAsFlow()
 
+    /** La ventana de la suscripción (planes y precios) está abierta. */
+    var paywall by mutableStateOf(false)
+
+    /** Comprando: desde que se abre el pago de Google hasta que el servidor lo ha comprobado. */
+    var purchasing by mutableStateOf(false)
+        private set
+
+    val plan: Plan get() = detail?.plan ?: Plan()
+
+    /** Tiene lo de pago (mes gratis o suscripción). Con un servidor sin pagos, siempre. */
+    val premium: Boolean get() = plan.premium
+
     init {
         refresh()
+        // Lo que pasa al volver del pago de Google. Solo las compras de esta persona (puede haber varias abiertas).
+        viewModelScope.launch {
+            Billing.events.collect { event ->
+                when (event) {
+                    is Billing.Event.Purchased -> event.purchases
+                        .filter { (Billing.seniorOf(it) ?: seniorId) == seniorId }
+                        .forEach { onPurchase(it) }
+                    Billing.Event.Cancelled -> purchasing = false
+                    is Billing.Event.Failed -> { purchasing = false; toast(event.message) }
+                }
+            }
+        }
+    }
+
+    fun startPurchasing() {
+        purchasing = true
+    }
+
+    fun stopPurchasing() {
+        purchasing = false
+    }
+
+    private fun onPurchase(purchase: Purchase) {
+        if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
+            purchasing = false
+            paywall = false
+            toast("El pago está pendiente. La suscripción se activará cuando Google lo confirme.")
+            return
+        }
+        if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
+        launch {
+            try {
+                FamilyApi.attachSubscription(seniorId, purchase.purchaseToken)
+                reload()
+                paywall = false
+                toast("¡Suscripción activada! Ya vuelve todo a su móvil")
+            } finally {
+                purchasing = false
+            }
+        }
+    }
+
+    /** "Ya pagué": manda al servidor las suscripciones de esta cuenta de Google para esta persona. */
+    fun restorePurchases() {
+        launch {
+            purchasing = true
+            try {
+                val bought = Billing.purchases().filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+                if (bought.isEmpty()) {
+                    toast("No hay ninguna suscripción con la cuenta de Google de este móvil")
+                    return@launch
+                }
+                // La que se compró para esta persona primero; si no, la que haya (p. ej. de alguien que se borró)
+                val sorted = bought.sortedBy { if (Billing.seniorOf(it) == seniorId) 0 else 1 }
+                var lastError: Exception? = null
+                for (p in sorted) {
+                    try {
+                        FamilyApi.attachSubscription(seniorId, p.purchaseToken)
+                        reload()
+                        if (premium) {
+                            paywall = false
+                            toast("Suscripción recuperada")
+                            return@launch
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        lastError = e
+                    }
+                }
+                toast(lastError?.let(::friendlyError) ?: "La suscripción de este móvil ya no está activa")
+            } finally {
+                purchasing = false
+            }
+        }
     }
 
     fun toast(message: String) {

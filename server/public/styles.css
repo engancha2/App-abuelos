@@ -125,3 +125,11 @@ input:focus, select:focus { outline: 2px solid var(--brand); outline-offset: 1px
 .auth { max-width: 380px; margin: 40px auto; }
 .auth h2 { text-align: center; font-size: 1.4rem; }
 .empty { text-align: center; padding: 32px 16px; color: var(--muted); }
+
+/* Mes gratis y suscripción */
+.card.plan { background: var(--brand-soft); border-color: transparent; }
+.card.plan.urgent { background: var(--warn-soft); border: 1px solid var(--warn); }
+.card.lock { border-style: dashed; }
+a.btn { display: inline-block; text-decoration: none; }
+/* Lo oculto, oculto siempre (.savebar y otros ponen display y si no taparían el atributo hidden) */
+[hidden] { display: none !important; }

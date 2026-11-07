@@ -157,6 +157,10 @@ object FamilyApi {
     /** "Hacerlo sonar en su móvil": suena unos segundos el timbre ya guardado. */
     suspend fun ringTest(id: Long): LocateResponse = call("POST", "/api/seniors/$id/ring-test", out = LocateResponse.serializer())!!
 
+    /** Una compra de Google Play para esta persona: el servidor la comprueba con Google y la confirma. */
+    suspend fun attachSubscription(id: Long, purchaseToken: String): SubscriptionResponse =
+        call("POST", "/api/seniors/$id/subscription", body { put("purchaseToken", purchaseToken) }, SubscriptionResponse.serializer())!!
+
     suspend fun locations(id: Long, since: Long): List<LocationPoint> =
         call("GET", "/api/seniors/$id/locations?since=$since", out = ListSerializer(LocationPoint.serializer()))!!
 

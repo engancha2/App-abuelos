@@ -46,6 +46,31 @@ data class LocationPoint(
     val ts: Long,
 )
 
+/**
+ * El plan de una persona (server/src/billing.js):
+ * - trial: mes gratis ([trialEndsAt] null = aún no ha empezado: empieza al emparejar su móvil)
+ * - premium: suscripción pagada (por cualquiera de la familia) hasta [premiumUntil]
+ * - free: se acabó el mes gratis y no hay suscripción: lo de pago no le llega a su móvil
+ */
+@Serializable
+data class Plan(
+    val status: String = "premium",
+    val premium: Boolean = true,
+    val billingEnabled: Boolean = false,
+    val trialEndsAt: Long? = null,
+    val trialDaysLeft: Int? = null,
+    val premiumUntil: Long? = null,
+    val autoRenew: Boolean = false,
+) {
+    val isTrial: Boolean get() = billingEnabled && status == "trial"
+    val isFree: Boolean get() = billingEnabled && status == "free"
+    val isPaid: Boolean get() = billingEnabled && status == "premium"
+}
+
+/** Respuesta al mandar una compra: pending = pago aún sin completar (p. ej. en efectivo en una tienda). */
+@Serializable
+data class SubscriptionResponse(val pending: Boolean = false, val plan: Plan = Plan())
+
 /** Una persona mayor en la lista de inicio. */
 @Serializable
 data class SeniorSummary(
@@ -60,6 +85,7 @@ data class SeniorSummary(
     val device: DeviceInfo? = null,
     val lastLocation: LocationPoint? = null,
     val pendingAlerts: Int = 0,
+    val plan: Plan = Plan(),
 )
 
 @Serializable
@@ -85,6 +111,8 @@ data class SeniorDetail(
     val members: List<Member> = emptyList(),
     val pairCode: String? = null,
     val pairExpires: Long? = null,
+    val plan: Plan = Plan(),
+    val billingRef: String? = null,           // quién compra, para Google Play (obfuscatedAccountId)
 ) {
     val isOwner: Boolean get() = role == "owner"
     /** Le llegan los cambios en segundos (conexión en vivo o Firebase). */

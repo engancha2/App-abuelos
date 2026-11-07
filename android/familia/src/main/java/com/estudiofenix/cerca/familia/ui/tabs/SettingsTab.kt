@@ -75,6 +75,7 @@ import com.estudiofenix.cerca.familia.ui.SectionCard
 import com.estudiofenix.cerca.familia.ui.SectionTitle
 import com.estudiofenix.cerca.familia.ui.SeniorViewModel
 import com.estudiofenix.cerca.familia.ui.StatusDot
+import com.estudiofenix.cerca.familia.ui.SubscriptionSection
 import com.estudiofenix.cerca.familia.ui.ago
 import com.estudiofenix.cerca.familia.ui.spanish
 import kotlinx.coroutines.CancellationException
@@ -96,6 +97,7 @@ fun SettingsTab(vm: SeniorViewModel, onDeleted: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
     ) {
         PhoneSection(vm, detail, locationOn = draft.location.mode != "off")
+        SubscriptionSection(vm)
         ScreenSection(vm, draft.ui)
         PinSection(vm, detail.config.hasPin)
         AlertSettingsSection(vm, draft.alerts)
@@ -190,11 +192,11 @@ private fun PhoneSection(vm: SeniorViewModel, detail: SeniorDetail, locationOn: 
         // El código: siempre que no esté emparejado y, si lo está, mientras se cambia de móvil
         if (!detail.paired || code != null) {
             if (detail.paired) {
-                Text("Para cambiar de móvil, instala Cerca en el nuevo y, en el asistente, introduce este código. El actual sigue funcionando hasta entonces.")
+                Text("Para cambiar de móvil, instala Grandpa en el nuevo y, en el asistente, introduce este código. El actual sigue funcionando hasta entonces.")
             } else {
                 Text(buildAnnotatedString {
                     append("Instala la app ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Cerca") }
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Grandpa") }
                     append(" en su móvil y, en el asistente, introduce este código:")
                 })
             }
@@ -301,7 +303,7 @@ private fun expiresIn(expires: Long, now: Long): String {
 private fun shareCode(context: Context, code: String) {
     val send = Intent(Intent.ACTION_SEND)
         .setType("text/plain")
-        .putExtra(Intent.EXTRA_TEXT, "Instala la app Cerca en el móvil y, en el asistente, introduce este código: ${spacedCode(code)}")
+        .putExtra(Intent.EXTRA_TEXT, "Instala la app Grandpa en el móvil y, en el asistente, introduce este código: ${spacedCode(code)}")
     context.startActivity(Intent.createChooser(send, "Compartir el código"))
 }
 
@@ -537,7 +539,7 @@ private fun MembersSection(vm: SeniorViewModel, detail: SeniorDetail) {
             Spacer(Modifier.width(8.dp))
             Button(onClick = { invite() }, enabled = valid && !busy) { Text("Invitar") }
         }
-        Hint("La otra persona tiene que haber creado antes su cuenta en Cerca Familia (o en el panel web).")
+        Hint("La otra persona tiene que haber creado antes su cuenta en Find My Grandpa (o en el panel web).")
     }
 
     removing?.let { m ->

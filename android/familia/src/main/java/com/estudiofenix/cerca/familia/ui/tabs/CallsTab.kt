@@ -43,6 +43,7 @@ import com.estudiofenix.cerca.data.CallsConfig
 import com.estudiofenix.cerca.familia.data.FamilyApi
 import com.estudiofenix.cerca.familia.data.Ringtone
 import com.estudiofenix.cerca.familia.ui.Hint
+import com.estudiofenix.cerca.familia.ui.PremiumLock
 import com.estudiofenix.cerca.familia.ui.SectionCard
 import com.estudiofenix.cerca.familia.ui.SectionTitle
 import com.estudiofenix.cerca.familia.ui.SeniorViewModel
@@ -102,6 +103,13 @@ fun CallsTab(vm: SeniorViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(12.dp))
+        // De pago: sin plan no le llega a su móvil (lo elegido se guarda para cuando se suscriban)
+        if (!vm.premium) {
+            PremiumLock(vm, "Contestar sola", "Si alguien de Contactos insiste y no contesta, la llamada se contesta sola en manos libres.")
+            SectionTitle("Timbre")
+            PremiumLock(vm, "Timbres fuertes", "Timbres que se oyen bien y siempre a todo volumen. Ahora suena el timbre normal de su móvil.")
+            return@Column
+        }
         SectionCard(Modifier.selectableGroup()) {
             Text("Contestar sola en manos libres", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
             // 0 = nunca; de 2 a 5 como en el panel. El servidor admite hasta 10: si ya hay otro valor, también sale.

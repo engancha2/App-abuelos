@@ -39,6 +39,10 @@ Requisitos: Node 22.13+ (usa el SQLite integrado de Node, sin dependencias nativ
 | `VAPID_SUBJECT` | `mailto:info@tudominio.com` | Contacto para las notificaciones push |
 | `ALLOW_REGISTRATION` | `true` | Ponlo a `false` cuando ya tengáis cuentas, si no quieres registro abierto |
 | `COOKIE_SECURE` | `auto` | `auto` detecta HTTPS detrás de Traefik |
+| `FIREBASE_SERVICE_ACCOUNT` | *(el JSON, en base64 o la ruta)* | Clave de la cuenta de servicio de Google: notificaciones (FCM) **y** comprobar los pagos de Google Play. También vale dejarla en `/data/firebase-service-account.json` |
+| `BILLING` | `on` | `off` = todo gratis para todos (sin mes gratis ni suscripción) |
+| `PLAY_PACKAGE_NAME` | `com.estudiofenix.cerca.familia` | La app de la familia, donde se compra la suscripción |
+| `PLAY_PRODUCT_IDS` | `premium` | Id de la suscripción en Play Console (varios separados por comas) |
 
 4. Dominio con HTTPS en Dokploy (el WebSocket `/api/device/ws` funciona con Traefik sin configuración extra).
 
@@ -66,6 +70,21 @@ Lo crítico son las llamadas. Prueba, con la pantalla bloqueada y desbloqueada:
 - [ ] Salir de la zona andando: llega el aviso al panel.
 
 Si algo de llamadas falla, desde el menú de familia → «Ajustes de Android» se puede devolver la app de teléfono a la de Xiaomi en un minuto.
+
+## Cobrar: mes gratis + suscripción
+
+- **Mes gratis sin tarjeta.** Empieza al emparejar el móvil del mayor y lo cuenta el servidor (`server/src/billing.js`). Va ligado al móvil: borrar a la persona y volver a crearla no da otro mes. Avisa a la familia 5 días antes y el día que se acaba.
+- **Suscripción en Google Play**, desde la app de la familia (mensual y anual). La paga una persona y vale para toda la familia de ese mayor, también en el panel web (en el panel no se compra).
+- **Sin suscripción su móvil sigue funcionando**: llamadas, contactos, SOS, «¿dónde está ahora?» y la última posición. Se desactivan las zonas seguras, el historial de recorridos, contestar sola y los timbres fuertes. La configuración se guarda: al suscribirse vuelve tal cual.
+- Qué es de pago está en un solo sitio: `effectiveConfig` y `PREMIUM_FEATURES` en `server/src/billing.js` (y los textos de la app y el panel).
+
+Para activarlo:
+
+1. **Play Console → Configuración → Perfil de pagos**: dar de alta el perfil de pagos de la empresa (datos fiscales y cuenta bancaria).
+2. **Play Console → la app de la familia → Monetizar → Suscripciones**: crear la suscripción con id `premium` y dos planes básicos, uno mensual y otro anual, con renovación automática y **sin prueba gratis** (la prueba es la nuestra, sin tarjeta).
+3. **Google Cloud** (el mismo proyecto que Firebase): activar *Google Play Android Developer API* y crear una cuenta de servicio con su clave JSON. Esa clave es `FIREBASE_SERVICE_ACCOUNT`.
+4. **Play Console → Usuarios y permisos**: invitar el email de esa cuenta de servicio con permiso para *ver datos financieros* y *gestionar pedidos y suscripciones*.
+5. Para probar sin pagar: añadir vuestras cuentas como **testers de licencias** (Play Console → Configuración → Pruebas de licencias) y subir la app a una pista de prueba interna. Los pagos de prueba se renuevan cada pocos minutos.
 
 ## Notas para publicarla en Google Play
 

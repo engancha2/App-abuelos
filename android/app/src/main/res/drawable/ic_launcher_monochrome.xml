@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de un solo color (Android 13+, "iconos temáticos"): el contorno de la cara, las gafas y el bigote -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#000000" android:strokeWidth="3"
+        android:pathData="M30,53a24,24 0,1 0,48 0a24,24 0,1 0,-48 0z" />
+    <path android:strokeColor="#000000" android:strokeWidth="2.6"
+        android:pathData="M38,50a7,7 0,1 0,14 0a7,7 0,1 0,-14 0z" />
+    <path android:strokeColor="#000000" android:strokeWidth="2.6"
+        android:pathData="M56,50a7,7 0,1 0,14 0a7,7 0,1 0,-14 0z" />
+    <path android:strokeColor="#000000" android:strokeWidth="2.4" android:strokeLineCap="round"
+        android:pathData="M52,49Q54,47.5 56,49" />
+    <path android:fillColor="#000000"
+        android:pathData="M54,61C50,59 44,59 40,62C38,64 39,68 42,68C46,68 50,66 54,64C58,66 62,68 66,68C69,68 70,64 68,62C64,59 58,59 54,61Z" />
+</vector>

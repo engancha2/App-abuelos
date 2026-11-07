@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de un solo color (Android 13+): el contorno del marcador con las gafas y el bigote dentro -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#000000" android:strokeWidth="3"
+        android:pathData="M54,84C46,74 30,62 30,47A24,24 0,1 1,78 47C78,62 62,74 54,84Z" />
+    <path android:strokeColor="#000000" android:strokeWidth="2.2"
+        android:pathData="M43,45a5,5 0,1 0,10 0a5,5 0,1 0,-10 0z" />
+    <path android:strokeColor="#000000" android:strokeWidth="2.2"
+        android:pathData="M55,45a5,5 0,1 0,10 0a5,5 0,1 0,-10 0z" />
+    <path android:strokeColor="#000000" android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M53,44.3Q54,43.3 55,44.3" />
+    <path android:fillColor="#000000"
+        android:pathData="M54,52C51,50.5 47,50.5 44.5,52.5C43,54 43.8,56.5 46,56.5C49,56.5 51.5,55 54,54C56.5,55 59,56.5 62,56.5C64.2,56.5 65,54 63.5,52.5C61,50.5 57,50.5 54,52Z" />
+</vector>

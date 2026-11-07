@@ -19,6 +19,8 @@ android {
         // El mismo servidor que la app del mayor (android/gradle.properties o -Pcerca.serverUrl=...)
         val serverUrl = (project.findProperty("cerca.serverUrl") as String?) ?: "https://cerca.tudominio.com"
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
+        // La suscripción de Google Play (Play Console → Monetizar → Suscripciones). El servidor acepta la misma (PLAY_PRODUCT_IDS).
+        buildConfigField("String", "PREMIUM_PRODUCT_ID", "\"premium\"")
     }
 
     buildTypes {
@@ -54,4 +56,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.osmdroid)       // mapas de OpenStreetMap, sin clave de Google
     implementation(libs.coil.compose)   // fotos de los contactos desde el servidor
+    implementation(libs.play.billing)   // la suscripción, con Google Play
 }

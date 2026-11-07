@@ -103,7 +103,7 @@ function setDirty(d) {
 
 // ---------------------------------------------------------------- Auth
 function renderAuth(mode) {
-  setTitle('Cerca', false);
+  setTitle('Find My Grandpa', false);
   $('#logout').hidden = true;
   const reg = mode === 'register';
   view.innerHTML = `
@@ -133,7 +133,7 @@ function renderAuth(mode) {
 
 // ---------------------------------------------------------------- Inicio
 async function renderHome() {
-  setTitle('Cerca', false);
+  setTitle('Find My Grandpa', false);
   const seniors = await api('GET', '/api/seniors');
   view.innerHTML = `
     ${seniors.length ? '' : `<div class="empty"><p style="font-size:2.5rem;margin:0">👵👴</p><p>Añade a tu familiar para empezar.</p></div>`}
@@ -215,6 +215,7 @@ function renderDetail() {
   const s = state.senior;
   setTitle(s.name, true);
   view.innerHTML = `
+    ${planBanner(s)}
     <nav class="tabs" role="tablist">
       ${TABS.map(([k, label]) => `<button role="tab" data-tab="${k}" aria-selected="${state.tab === k}">${label}${k === 'avisos' && s.pendingAlerts ? ` <span class="badge">${s.pendingAlerts}</span>` : ''}</button>`).join('')}
     </nav>
@@ -225,6 +226,49 @@ function renderDetail() {
 }
 
 const change = (fn) => { fn(state.draft); setDirty(true); };
+
+// ---- Mes gratis y suscripción (server/src/billing.js)
+// Aquí no se compra: la suscripción se contrata en la app de la familia (Google Play) y vale para toda la familia.
+const premium = () => state.senior?.plan?.premium !== false;
+const playUrl = () => `https://play.google.com/store/apps/details?id=${encodeURIComponent(state.meta?.billing?.packageName ?? '')}`;
+const dayFmt = (ts) => new Date(ts).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
+const subscribeHint = 'Suscríbete desde la app de la familia en Android: vale para toda la familia, también aquí.';
+
+function planBanner(s) {
+  const p = s.plan;
+  if (!p?.billingEnabled) return '';
+  if (p.status === 'free') {
+    return `<div class="card plan urgent"><b>Se ha acabado el mes gratis.</b> Su móvil sigue funcionando (llamadas, contactos, SOS y «¿dónde está ahora?»), pero las zonas seguras, el historial, contestar sola y los timbres fuertes están desactivados.
+      <div class="row" style="margin-top:8px"><a class="btn primary small" href="${playUrl()}" target="_blank" rel="noopener">Abrir la app en Google Play</a><span class="muted grow">${subscribeHint}</span></div></div>`;
+  }
+  if (p.status === 'trial' && p.trialEndsAt && p.trialDaysLeft <= 7) {
+    return `<div class="card plan">⏳ Quedan <b>${p.trialDaysLeft} ${p.trialDaysLeft === 1 ? 'día' : 'días'}</b> del mes gratis. <span class="muted">${subscribeHint}</span></div>`;
+  }
+  return '';
+}
+
+/** En lugar de una opción de pago, cuando no hay plan. Lo que hubiera configurado se guarda y vuelve al suscribirse. */
+function lockCard(title, text) {
+  return `<div class="card lock"><b>🔒 ${title}</b><p class="hint" style="margin:6px 0 10px">${text}</p>
+    <a class="btn small" href="${playUrl()}" target="_blank" rel="noopener">Suscribirse en la app Android</a></div>`;
+}
+
+function subscriptionSection(s) {
+  const p = s.plan;
+  if (!p?.billingEnabled) return '';
+  let body;
+  if (p.status === 'premium') {
+    body = `<b>✅ Suscripción activa</b><p class="hint" style="margin:4px 0 0">${p.autoRenew ? `Se renueva sola el ${dayFmt(p.premiumUntil)}` : `Cancelada: sigue activa hasta el ${dayFmt(p.premiumUntil)}`}. La paga una persona y vale para toda la familia. Se gestiona en Google Play.</p>`;
+  } else if (p.status === 'trial') {
+    body = p.trialEndsAt
+      ? `<b>🎁 Mes gratis: quedan ${p.trialDaysLeft} días</b><p class="hint" style="margin:4px 0 0">Hasta el ${dayFmt(p.trialEndsAt)}. Sin tarjeta: al acabar decides si te suscribes. ${subscribeHint}</p>`
+      : '<b>🎁 Mes gratis</b><p class="hint" style="margin:4px 0 0">Empieza al conectar su móvil. Sin tarjeta: al acabar decides si te suscribes.</p>';
+  } else {
+    body = `<b>Sin suscripción</b><p class="hint" style="margin:4px 0 8px">Su móvil sigue funcionando: llamadas, contactos, SOS y «¿dónde está ahora?». ${subscribeHint}</p>
+      <a class="btn primary small" href="${playUrl()}" target="_blank" rel="noopener">Abrir la app en Google Play</a>`;
+  }
+  return `<h2>Suscripción</h2><div class="card">${body}</div>`;
+}
 
 async function saveConfig() {
   try {
@@ -268,7 +312,7 @@ async function tabMap(el) {
       <button class="btn primary" id="locate">¿Dónde está ahora?</button>
     </div>
     <div id="map" class="map"></div>
-    <div class="row">
+    ${premium() ? `<div class="row">
       <label class="field grow" style="margin:0"><span>Recorrido</span>
         <select id="range">
           <option value="3">Últimas 3 horas</option>
@@ -277,7 +321,7 @@ async function tabMap(el) {
           <option value="168">Última semana</option>
         </select>
       </label>
-    </div>
+    </div>` : lockCard('Historial de recorridos', 'Por dónde ha ido las últimas horas o días. Ahora solo se ve su última posición.')}
     <p class="hint">Modo actual: <b>${modeLabel(s.config.location)}</b>. Lo cambias en <a href="#/s/${s.id}/ubicacion">Ubicación</a>.</p>`;
 
   const map = newMap($('#map'));
@@ -310,7 +354,7 @@ async function tabMap(el) {
       map.setView([s.config.location.zones[0].lat, s.config.location.zones[0].lng], 15); first = false;
     }
   };
-  $('#range').onchange = refresh;
+  if ($('#range')) $('#range').onchange = refresh;
   $('#locate').onclick = async () => {
     try {
       const r = await api('POST', `/api/seniors/${s.id}/locate`);
@@ -334,7 +378,10 @@ function modeLabel(loc) {
 async function tabAlerts(el) {
   const s = state.senior;
   const alerts = await api('GET', `/api/seniors/${s.id}/alerts`);
-  const icons = { sos: '🆘', zone_exit: '📍', zone_enter: '🏠', low_battery: '🔋', offline: '📵', setup_problem: '⚠️', auto_answer: '📞' };
+  const icons = {
+    sos: '🆘', zone_exit: '📍', zone_enter: '🏠', low_battery: '🔋', offline: '📵', setup_problem: '⚠️', auto_answer: '📞',
+    trial_ending: '⏳', trial_ended: '⏳',
+  };
   el.innerHTML = `
     ${alerts.some((a) => !a.acknowledged) ? `<button class="btn" id="ack" style="margin-bottom:12px">Marcar todo como visto</button>` : ''}
     ${alerts.length ? '' : '<div class="card empty">Sin avisos. ¡Todo tranquilo!</div>'}
@@ -471,7 +518,7 @@ function tabCalls(el) {
     </div>
 
     <h2>Si no contesta</h2>
-    <p class="hint">Por si se cae y no llega al móvil: si alguien de Contactos le llama varias veces seguidas (en 15 minutos) y no contesta, la última se contesta sola con manos libres y el volumen al máximo. Antes suena unos segundos, pita al abrir el micrófono y os llega un aviso. Actívalo solo con su permiso.</p>
+    ${premium() ? `<p class="hint">Por si se cae y no llega al móvil: si alguien de Contactos le llama varias veces seguidas (en 15 minutos) y no contesta, la última se contesta sola con manos libres y el volumen al máximo. Antes suena unos segundos, pita al abrir el micrófono y os llega un aviso. Actívalo solo con su permiso.</p>
     <div class="card">
       <label class="field"><span>Contestar sola en manos libres</span>
         <select id="autoans">
@@ -479,9 +526,12 @@ function tabCalls(el) {
           ${[2, 3, 4, 5].map((n) => `<option value="${n}" ${c.autoAnswerOnCall === n ? 'selected' : ''}>A la ${n}ª llamada seguida (tras ${n - 1} sin respuesta)</option>`).join('')}
         </select>
       </label>
-    </div>`;
+    </div>` : `${lockCard('Contestar sola', 'Si alguien de Contactos insiste y no contesta, la llamada se contesta sola en manos libres.')}
+    <h2>Timbre</h2>
+    ${lockCard('Timbres fuertes', 'Timbres que se oyen bien y siempre a todo volumen. Ahora suena el timbre normal de su móvil.')}`}`;
   el.querySelectorAll('[name=filter]').forEach((r) => (r.onchange = () => change((d) => (d.calls.filter = r.value))));
   $('#rep').onchange = (e) => change((d) => (d.calls.allowRepeated = e.target.checked));
+  if (!premium()) return;
   $('#autoans').onchange = (e) => change((d) => (d.calls.autoAnswerOnCall = Number(e.target.value)));
   renderRingtones(el);
 }
@@ -530,13 +580,16 @@ function tabLocation(el) {
   state.maps.forEach((m) => m.remove());
   state.maps = [];
   const l = state.draft.location;
-  const opt = (v, title, desc, extra = '') => `
-    <label class="option"><input type="radio" name="mode" value="${v}" ${l.mode === v ? 'checked' : ''}>
-      <span style="flex:1"><b>${title}</b><small>${desc}</small>${l.mode === v ? extra : ''}</span></label>`;
+  const paid = premium();
+  const opt = (v, title, desc, extra = '', locked = false) => `
+    <label class="option"><input type="radio" name="mode" value="${v}" ${l.mode === v ? 'checked' : ''} ${locked && l.mode !== v ? 'disabled' : ''}>
+      <span style="flex:1"><b>${locked ? '🔒 ' : ''}${title}</b><small>${desc}</small>${l.mode === v ? extra : ''}</span></label>`;
   el.innerHTML = `
     <h2>¿Cuándo envía su ubicación?</h2>
     ${opt('zone', 'Solo si sale de una zona', 'Avisa cuando sale de casa, del barrio… y mientras esté fuera envía su posición con frecuencia. Lo que menos batería gasta.',
-      `<label class="field" style="margin-top:10px"><span>Mientras está fuera, cada (segundos)</span><input type="number" id="outside" min="15" max="600" value="${l.outsideZoneSeconds}"></label>`)}
+      paid ? `<label class="field" style="margin-top:10px"><span>Mientras está fuera, cada (segundos)</span><input type="number" id="outside" min="15" max="600" value="${l.outsideZoneSeconds}"></label>`
+        : '<p class="hint" style="margin:8px 0 0"><b>Sin suscripción este modo está desactivado y su móvil no envía la ubicación solo.</b> Elige otro modo o suscríbete para que vuelva tal y como estaba.</p>',
+      !paid)}
     ${opt('interval', 'Cada cierto tiempo', 'Envía su posición periódicamente, esté donde esté.',
       `<label class="field" style="margin-top:10px"><span>Cada (minutos)</span><input type="number" id="interval" min="1" max="240" value="${l.intervalMinutes}"></label>`)}
     ${opt('continuous', 'Continuamente', 'Seguimiento casi en tiempo real. Gasta bastante batería: útil en momentos concretos (si se ha perdido).',
@@ -544,9 +597,9 @@ function tabLocation(el) {
     ${opt('off', 'Desactivada', 'No se envía ninguna ubicación. El SOS sí incluye la posición si la hay.')}
 
     <h2>Zonas seguras</h2>
-    <p class="hint">Toca el mapa para añadir una zona. En los modos "cada cierto tiempo" y "continuo" también te avisa si sale de ellas.</p>
+    ${paid ? `<p class="hint">Toca el mapa para añadir una zona. En los modos "cada cierto tiempo" y "continuo" también te avisa si sale de ellas.</p>
     <div id="zmap" class="map small"></div>
-    <div id="zlist"></div>
+    <div id="zlist"></div>` : lockCard('Zonas seguras', `Aviso al momento si sale de casa, del barrio o del centro de día.${l.zones.length ? ` Tus ${l.zones.length} zonas están guardadas y vuelven al suscribirte.` : ''}`)}
 
     <h2>Privacidad</h2>
     <label class="field"><span>Borrar el historial de posiciones pasados (días)</span>
@@ -555,6 +608,7 @@ function tabLocation(el) {
   el.querySelectorAll('[name=mode]').forEach((r) => (r.onchange = () => { change((d) => (d.location.mode = r.value)); tabLocation(el); }));
   const num = (id, key) => { const i = $(`#${id}`); if (i) i.onchange = () => change((d) => (d.location[key] = Number(i.value))); };
   num('outside', 'outsideZoneSeconds'); num('interval', 'intervalMinutes'); num('cont', 'continuousSeconds'); num('retention', 'retentionDays');
+  if (!paid) return;
 
   const last = state.senior.lastLocation;
   const center = l.zones[0] ? [l.zones[0].lat, l.zones[0].lng] : last ? [last.lat, last.lng] : undefined;
@@ -632,11 +686,13 @@ function tabSettings(el) {
         </div>` : ''}
         <div class="row"><button class="btn" id="newcode">Emparejar otro móvil</button><button class="btn danger" id="unpair">Desemparejar</button></div>
       ` : `
-        <p style="margin:0">Instala la app <b>Cerca</b> en su móvil y, en el asistente, introduce este código:</p>
+        <p style="margin:0">Instala la app <b>Grandpa</b> en su móvil y, en el asistente, introduce este código:</p>
         <div id="codebox">${s.pairCode ? `<div class="paircode">${s.pairCode}</div><p class="hint" style="text-align:center">Caduca en ${Math.max(1, Math.round((s.pairExpires - Date.now()) / 60000))} min</p>` : ''}</div>
         <button class="btn primary" id="newcode">${s.pairCode ? 'Generar otro código' : 'Generar código'}</button>
       `}
     </div>
+
+    ${subscriptionSection(s)}
 
     <h2>Pantalla</h2>
     <div class="card">

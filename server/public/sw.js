@@ -3,7 +3,7 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'Cerca', body: '' };
+  const data = event.data ? event.data.json() : { title: 'Find My Grandpa', body: '' };
   event.waitUntil(self.registration.showNotification(data.title, {
     body: data.body,
     icon: '/icon.svg',

@@ -490,8 +490,8 @@ fun ContactsScreen(cfg: Config, state: PhoneBookState, onEntry: (PhoneBook.Entry
                     // Si Android ya no enseña la ventana del permiso (se ha denegado), solo queda ir a los ajustes
                     CenteredMessage(
                         "Falta un permiso",
-                        if (denied) "Abre los ajustes de Cerca, entra en «Permisos» y permite «Contactos»."
-                        else "Para ver la agenda, Cerca necesita permiso para leer los contactos del móvil.",
+                        if (denied) "Abre los ajustes de Grandpa, entra en «Permisos» y permite «Contactos»."
+                        else "Para ver la agenda, Grandpa necesita permiso para leer los contactos del móvil.",
                     )
                     BigButton(if (denied) "Abrir ajustes" else "Permitir", Palette.brand) {
                         if (denied) DeviceChecks.startFirst(ctx, listOf(DeviceChecks.appDetails(ctx)))

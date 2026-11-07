@@ -148,7 +148,7 @@ class CercaService : LifecycleService() {
         )
         val notification: Notification = NotificationCompat.Builder(this, CercaApp.CHANNEL_SERVICE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Cerca está activo")
+            .setContentTitle("Grandpa está activo")
             .setContentText("Tu familia puede ayudarte si lo necesitas")
             .setOngoing(true)
             .setSilent(true)

@@ -2,6 +2,7 @@ package com.estudiofenix.cerca.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.provider.Settings
 import com.estudiofenix.cerca.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,9 +29,17 @@ object Store {
     private val _revision = MutableStateFlow(0)
     val revision: StateFlow<Int> = _revision.asStateFlow()
 
+    /**
+     * Identificador de este móvil para esta app (ANDROID_ID): no cambia al reinstalar, solo al restablecer el móvil.
+     * El servidor lo usa para que el mes gratis sea uno por móvil (y solo guarda un resumen cifrado).
+     */
+    var deviceId: String? = null
+        private set
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences("cerca", Context.MODE_PRIVATE)
         dir = context.filesDir
+        deviceId = runCatching { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }.getOrNull()
         runCatching { _config.value = json.decodeFromString(Config.serializer(), configFile.readText()) }
     }
 

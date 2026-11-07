@@ -77,7 +77,7 @@ fun SeniorsScreen(onOpen: (id: Long, tab: String) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Cerca Familia") },
+                title = { Text("Find My Grandpa") },
                 actions = {
                     IconButton(onClick = { menu = true }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
                     DropdownMenu(menu, onDismissRequest = { menu = false }) {
@@ -105,7 +105,7 @@ fun SeniorsScreen(onOpen: (id: Long, tab: String) -> Unit) {
                 list == null -> Loading()
                 list.isEmpty() -> EmptyState(
                     "👵👴  Añade a tu familiar",
-                    "Después instala Cerca en su móvil y conéctalo con el código que te daremos.",
+                    "Después instala Grandpa en su móvil y conéctalo con el código que te daremos.",
                     "Añadir familiar",
                 ) { adding = true }
                 else -> LazyColumn(

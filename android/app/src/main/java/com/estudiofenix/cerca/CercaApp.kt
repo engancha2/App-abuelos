@@ -32,7 +32,7 @@ class CercaApp : Application() {
         nm.createNotificationChannels(
             listOf(
                 NotificationChannel(CHANNEL_SERVICE, "Servicio activo", NotificationManager.IMPORTANCE_MIN).apply {
-                    description = "Aviso fijo mientras Cerca comparte la ubicación con la familia"
+                    description = "Aviso fijo mientras Grandpa comparte la ubicación con la familia"
                     setShowBadge(false)
                 },
                 NotificationChannel(CHANNEL_INCOMING, "Llamadas entrantes", NotificationManager.IMPORTANCE_HIGH).apply {

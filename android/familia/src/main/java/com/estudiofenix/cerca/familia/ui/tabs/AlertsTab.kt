@@ -64,6 +64,8 @@ private val KINDS = mapOf(
     "offline" to Kind("📵", "Sin conexión"),
     "setup_problem" to Kind("⚠️", "Revisa el móvil"),
     "auto_answer" to Kind("📞", "Llamada contestada sola"),
+    "trial_ending" to Kind("⏳", "Se acaba el mes gratis"),
+    "trial_ended" to Kind("⏳", "Mes gratis terminado"),
 )
 private val OTHER = Kind("🔔", "Aviso")
 

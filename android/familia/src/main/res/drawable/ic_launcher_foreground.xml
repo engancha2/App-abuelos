@@ -1,7 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de Find My Grandpa: el marcador de un mapa con la cara del abuelo de la app Grandpa dentro.
+     Todo dentro de la zona segura de los iconos adaptables (círculo de 66 dp en el centro de 108). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Marcador -->
     <path android:fillColor="#FFFFFF"
-        android:pathData="M54,80C54,80 30,64.5 30,46A16,16 0,0 1,54 32A16,16 0,0 1,78 46C78,64.5 54,80 54,80Z" />
-    <path android:fillColor="#C2410C"
-        android:pathData="M54,47m-7.5,0a7.5,7.5 0,1 1,15 0a7.5,7.5 0,1 1,-15 0" />
+        android:pathData="M54,84C46,74 30,62 30,47A24,24 0,1 1,78 47C78,62 62,74 54,84Z" />
+    <!-- Cabeza -->
+    <path android:fillColor="#F4CDA5" android:pathData="M38,47a16,16 0,1 0,32 0a16,16 0,1 0,-32 0z" />
+    <!-- Pelo canoso a los lados (gris claro: sobre el marcador blanco se vería poco) -->
+    <path android:fillColor="#CFD8DC" android:pathData="M35.5,42a4,5.5 0,1 0,8 0a4,5.5 0,1 0,-8 0z" />
+    <path android:fillColor="#CFD8DC" android:pathData="M64.5,42a4,5.5 0,1 0,8 0a4,5.5 0,1 0,-8 0z" />
+    <!-- Ojos -->
+    <path android:fillColor="#263238" android:pathData="M46.7,45.5a1.3,1.3 0,1 0,2.6 0a1.3,1.3 0,1 0,-2.6 0z" />
+    <path android:fillColor="#263238" android:pathData="M58.7,45.5a1.3,1.3 0,1 0,2.6 0a1.3,1.3 0,1 0,-2.6 0z" />
+    <!-- Gafas -->
+    <path android:strokeColor="#263238" android:strokeWidth="2.2"
+        android:pathData="M43,45a5,5 0,1 0,10 0a5,5 0,1 0,-10 0z" />
+    <path android:strokeColor="#263238" android:strokeWidth="2.2"
+        android:pathData="M55,45a5,5 0,1 0,10 0a5,5 0,1 0,-10 0z" />
+    <path android:strokeColor="#263238" android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M53,44.3Q54,43.3 55,44.3" />
+    <!-- Nariz -->
+    <path android:fillColor="#E39E78" android:pathData="M51.4,50.3a2.6,2.2 0,1 0,5.2 0a2.6,2.2 0,1 0,-5.2 0z" />
+    <!-- Bigote (con borde, para que se vea sobre la cara) -->
+    <path android:fillColor="#FFFFFF" android:strokeColor="#B0BEC5" android:strokeWidth="0.8"
+        android:pathData="M54,52C51,50.5 47,50.5 44.5,52.5C43,54 43.8,56.5 46,56.5C49,56.5 51.5,55 54,54C56.5,55 59,56.5 62,56.5C64.2,56.5 65,54 63.5,52.5C61,50.5 57,50.5 54,52Z" />
 </vector>

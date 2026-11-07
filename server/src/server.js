@@ -9,6 +9,10 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { openDb, DEFAULT_CONFIG, mergeConfig } from './db.js';
 import { createFcm, loadFcmCredentials } from './fcm.js';
+import { createPlay, summarizeSubscription } from './play.js';
+import {
+  TRIAL_DAYS, REMIND_DAYS_BEFORE, PREMIUM_FEATURES, accountRef, deviceRef, planOf, effectiveConfig,
+} from './billing.js';
 import { RINGTONES, ringtoneWav } from './ringtones.js';
 import {
   now, sha256, randomToken, hashPassword, verifyPassword, parseCookies, haversineMeters, sanitizeConfig, phoneKey,
@@ -23,13 +27,18 @@ const env = {
   allowRegistration: (process.env.ALLOW_REGISTRATION ?? 'true') === 'true',
   cookieSecure: (process.env.COOKIE_SECURE ?? 'auto'),
   vapidSubject: process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com',
+  // Mes gratis + suscripción (src/billing.js). "off" = todo gratis para todos, sin avisos de pago.
+  billing: (process.env.BILLING ?? 'on') !== 'off',
+  // La app de la familia (donde se compra) y los productos de suscripción que se aceptan
+  playPackage: process.env.PLAY_PACKAGE_NAME ?? 'com.estudiofenix.cerca.familia',
+  playProducts: (process.env.PLAY_PRODUCT_IDS ?? 'premium').split(',').map((s) => s.trim()).filter(Boolean),
 };
 
 const SESSION_COOKIE = 'cerca_s';
 const SESSION_DAYS = 30;
 const PAIR_CODE_MINUTES = 30;
 
-export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = null } = {}) {
+export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = null, play = null, billing = env.billing } = {}) {
   const db = openDb(dataDir);
   const uploadsDir = path.join(dataDir, 'uploads');
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -46,7 +55,10 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
 
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 1024 * 1024 });
   // Firebase Cloud Messaging: avisos a la app de la familia y "despertar" al móvil del mayor (los tests pasan uno falso)
-  const push = fcm ?? createFcm({ credentials: loadFcmCredentials(dataDir), log: app.log });
+  const googleCredentials = (fcm && play) ? null : loadFcmCredentials(dataDir);
+  const push = fcm ?? createFcm({ credentials: googleCredentials, log: app.log });
+  // Google Play: comprobar las suscripciones (la misma clave de cuenta de servicio; los tests pasan uno falso)
+  const playApi = play ?? createPlay({ credentials: googleCredentials, packageName: env.playPackage, log: app.log });
   await app.register(fastifyMultipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
   await app.register(fastifyWebsocket, { options: { maxPayload: 64 * 1024 } });
   await app.register(fastifyStatic, { root: path.join(__dirname, '..', 'public'), prefix: '/' });
@@ -68,6 +80,15 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
   };
 
   const cfgOf = (senior) => mergeConfig(DEFAULT_CONFIG, JSON.parse(senior.config_json));
+
+  // ---------- Mes gratis y suscripción (src/billing.js) ----------
+  /** La suscripción que más dura de esta persona (si hay varias, p. ej. porque han pagado dos hermanos). */
+  const subscriptionOf = (seniorId) => db.prepare(
+    `SELECT * FROM subscriptions WHERE senior_id = ? AND entitled = 1 ORDER BY expires_at DESC LIMIT 1`,
+  ).get(seniorId);
+  const planFor = (senior) => planOf(senior, subscriptionOf(senior.id), { enabled: billing });
+  /** Lo que se le manda a su móvil: la configuración guardada, sin lo de pago si no tiene plan. */
+  const deviceConfigOf = (senior) => effectiveConfig(cfgOf(senior), planFor(senior).premium);
 
   function setSessionCookie(req, reply, token, maxAgeSec) {
     const secure = env.cookieSecure === 'auto' ? req.protocol === 'https' : env.cookieSecure === 'true';
@@ -173,6 +194,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
     sos: '🆘 SOS', zone_exit: '📍 Ha salido de la zona', zone_enter: '🏠 Ha vuelto a la zona',
     low_battery: '🔋 Batería baja', offline: '📵 Sin conexión', setup_problem: '⚠️ Revisa el móvil',
     auto_answer: '📞 Llamada contestada sola',
+    trial_ending: '⏳ Se acaba el mes gratis', trial_ended: '⏳ Mes gratis terminado',
   };
 
   function createAlert(senior, type, message, lat = null, lng = null) {
@@ -185,7 +207,12 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
   // ======================================================================
   // AUTH FAMILIA
   // ======================================================================
-  app.get('/api/meta', async () => ({ allowRegistration: env.allowRegistration, vapidPublicKey: vapidKeys.publicKey }));
+  app.get('/api/meta', async () => ({
+    allowRegistration: env.allowRegistration,
+    vapidPublicKey: vapidKeys.publicKey,
+    // Para enseñar el mes gratis y lo que es de pago (en el panel no se compra: se compra en la app Android)
+    billing: { enabled: billing, trialDays: TRIAL_DAYS, features: PREMIUM_FEATURES, productIds: env.playProducts, packageName: env.playPackage },
+  }));
 
   // Timbres: la lista (para elegir) y cada sonido (para escucharlo y para que el móvil del mayor lo descargue)
   app.get('/api/ringtones', async () => RINGTONES);
@@ -279,6 +306,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
       device: s.device_info ? JSON.parse(s.device_info) : null,
       lastLocation: db.prepare(`SELECT lat, lng, accuracy, battery, source, ts FROM locations WHERE senior_id = ? ORDER BY ts DESC LIMIT 1`).get(s.id) ?? null,
       pendingAlerts: db.prepare(`SELECT COUNT(*) AS n FROM alerts WHERE senior_id = ? AND acknowledged = 0`).get(s.id).n,
+      plan: planFor(s),
     };
   }
 
@@ -314,6 +342,8 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
       members: q.membersOf.all(senior.id),
       pairCode: senior.pair_expires > now() ? senior.pair_code : null,
       pairExpires: senior.pair_expires > now() ? senior.pair_expires : null,
+      // La app Android lo pasa a Google Play al comprar (obfuscatedAccountId) para saber quién ha pagado
+      billingRef: accountRef(ctx.user.id),
     };
   });
 
@@ -338,10 +368,27 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
   function saveConfig(senior, cfg, { notifyDevice = true } = {}) {
     const version = senior.config_version + 1;
     db.prepare(`UPDATE seniors SET config_json = ?, config_version = ? WHERE id = ?`).run(JSON.stringify(cfg), version, senior.id);
-    if (notifyDevice && !sendToDevice(senior.id, { type: 'config', version })) {
-      pushToDevice(senior.id, { type: 'config', version }).catch(() => {});
-    }
+    if (notifyDevice) notifyConfig(senior.id, version);
     return version;
+  }
+
+  function notifyConfig(seniorId, version) {
+    if (!sendToDevice(seniorId, { type: 'config', version })) pushToDevice(seniorId, { type: 'config', version }).catch(() => {});
+  }
+
+  /**
+   * Si ha cambiado el plan (se acaba el mes gratis, se suscriben, caduca…), su móvil tiene que recibir otra vez
+   * la configuración: con o sin lo de pago. Se sube la versión aunque la configuración guardada sea la misma.
+   */
+  function syncPlan(seniorId) {
+    const senior = db.prepare(`SELECT * FROM seniors WHERE id = ?`).get(seniorId);
+    if (!senior) return;
+    const applied = planFor(senior).premium ? 'premium' : 'free';
+    if (senior.plan_applied === applied) return;
+    const version = senior.config_version + 1;
+    db.prepare(`UPDATE seniors SET plan_applied = ?, config_version = ? WHERE id = ?`).run(applied, version, senior.id);
+    // La primera vez (personas de antes) no hace falta molestar a su móvil: ya tiene esa configuración
+    if (senior.plan_applied != null) notifyConfig(senior.id, version);
   }
 
   app.put('/api/seniors/:id/config', async (req, reply) => {
@@ -409,6 +456,8 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
   app.get('/api/seniors/:id/locations', async (req, reply) => {
     const ctx = requireSenior(req, reply);
     if (!ctx) return;
+    // El recorrido es de pago: sin plan solo se ve la última posición (la del resumen)
+    if (!planFor(ctx.senior).premium) return [];
     const since = Number(req.query.since ?? now() - 24 * 3600_000);
     return db.prepare(`SELECT lat, lng, accuracy, battery, source, ts FROM locations WHERE senior_id = ? AND ts >= ? ORDER BY ts ASC LIMIT 5000`)
       .all(ctx.senior.id, since);
@@ -431,7 +480,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
     const ctx = requireSenior(req, reply);
     if (!ctx) return;
     const other = q.userByEmail.get(String(req.body?.email ?? ''));
-    if (!other) return reply.code(404).send({ error: 'Esa persona tiene que crear antes su cuenta en Cerca' });
+    if (!other) return reply.code(404).send({ error: 'Esa persona tiene que crear antes su cuenta en Find My Grandpa' });
     db.prepare(`INSERT OR IGNORE INTO members(senior_id, user_id, role) VALUES (?,?, 'member')`).run(ctx.senior.id, other.id);
     return { ok: true };
   });
@@ -442,6 +491,68 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
     if (ctx.senior.role !== 'owner') return reply.code(403).send({ error: 'Solo quien lo creó puede quitar familiares' });
     db.prepare(`DELETE FROM members WHERE senior_id = ? AND user_id = ? AND role != 'owner'`).run(ctx.senior.id, Number(req.params.userId));
     return { ok: true };
+  });
+
+  // ======================================================================
+  // SUSCRIPCIÓN (Google Play)
+  // ======================================================================
+  const PENDING = 'SUBSCRIPTION_STATE_PENDING';
+
+  function storeSubscription(token, info, { seniorId = null, userId = null } = {}) {
+    const t = now();
+    db.prepare(`INSERT INTO subscriptions(purchase_token, senior_id, user_id, product_id, base_plan_id, state, entitled, expires_at, auto_renew, test, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(purchase_token) DO UPDATE SET
+                  senior_id = COALESCE(excluded.senior_id, subscriptions.senior_id),
+                  user_id = COALESCE(excluded.user_id, subscriptions.user_id),
+                  product_id = excluded.product_id, base_plan_id = excluded.base_plan_id, state = excluded.state,
+                  entitled = excluded.entitled, expires_at = excluded.expires_at, auto_renew = excluded.auto_renew,
+                  test = excluded.test, updated_at = excluded.updated_at`)
+      .run(token, seniorId, userId, info.productId, info.basePlanId, info.state, info.entitled ? 1 : 0,
+        info.expiresAt, info.autoRenew ? 1 : 0, info.test ? 1 : 0, t, t);
+    // Al volver a suscribirse o cambiar de plan, Google da un token nuevo y el anterior deja de valer
+    if (info.linkedToken && info.linkedToken !== token) {
+      db.prepare(`UPDATE subscriptions SET entitled = 0, updated_at = ? WHERE purchase_token = ?`).run(t, info.linkedToken);
+    }
+  }
+
+  /**
+   * La app Android manda aquí cada compra (y las que encuentra al abrirse, por si alguna no llegó).
+   * Se comprueba con Google, se confirma (si no, Google la devuelve a los 3 días) y la persona pasa a tener plan.
+   */
+  app.post('/api/seniors/:id/subscription', async (req, reply) => {
+    const ctx = requireSenior(req, reply);
+    if (!ctx) return;
+    if (!billing) return { ok: true, pending: false, plan: planFor(ctx.senior) };
+    const token = String(req.body?.purchaseToken ?? '');
+    if (!/^[\w.:-]{20,4096}$/.test(token)) return reply.code(400).send({ error: 'Compra no válida' });
+    if (!playApi.enabled) return reply.code(503).send({ error: 'Los pagos aún no están activados en el servidor. Inténtalo más tarde.' });
+    if (tooMany(`sub:${ctx.user.id}`, 30)) return reply.code(429).send({ error: 'Demasiados intentos, espera unos minutos' });
+
+    const existing = db.prepare(`SELECT senior_id FROM subscriptions WHERE purchase_token = ?`).get(token);
+    if (existing?.senior_id && existing.senior_id !== ctx.senior.id) {
+      return reply.code(409).send({ error: 'Esta suscripción ya se está usando para otra persona' });
+    }
+    let sub;
+    try {
+      sub = await playApi.getSubscription(token);
+    } catch (err) {
+      app.log.warn({ err: err.message }, 'Google Play: no se ha podido comprobar la compra');
+      return reply.code(502).send({ error: 'No se ha podido comprobar el pago con Google Play. Inténtalo de nuevo en un rato.' });
+    }
+    if (!sub) return reply.code(400).send({ error: 'Google Play no reconoce esta compra' });
+    const info = summarizeSubscription(sub);
+    if (!env.playProducts.includes(info.productId)) return reply.code(400).send({ error: 'Esta compra no es una suscripción de la app' });
+    if (info.accountRef && info.accountRef !== accountRef(ctx.user.id)) {
+      return reply.code(403).send({ error: 'Esta suscripción la ha comprado otra cuenta' });
+    }
+
+    storeSubscription(token, info, { seniorId: ctx.senior.id, userId: ctx.user.id });
+    if (!info.acknowledged && info.state !== PENDING && info.entitled) await playApi.acknowledge(info.productId, token);
+    syncPlan(ctx.senior.id);
+    const fresh = db.prepare(`SELECT * FROM seniors WHERE id = ?`).get(ctx.senior.id);
+    // pending = pago en efectivo u otro que aún no se ha completado: tendrá plan cuando Google lo confirme
+    return { ok: true, pending: info.state === PENDING, plan: planFor(fresh) };
   });
 
   app.post('/api/seniors/:id/photo', async (req, reply) => {
@@ -470,10 +581,28 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
     if (!senior) return reply.code(404).send({ error: 'Código incorrecto o caducado' });
     const token = randomToken();
     deviceSockets.get(senior.id)?.close(); // si había otro móvil emparejado, se desconecta
+    const { id: deviceId, ...device } = req.body?.device ?? {};
     db.prepare(`UPDATE seniors SET device_token_hash = ?, device_info = ?, fcm_token = NULL, pair_code = NULL, pair_expires = NULL, last_seen = ? WHERE id = ?`)
-      .run(sha256(token), JSON.stringify(req.body?.device ?? {}), now(), senior.id);
+      .run(sha256(token), JSON.stringify(device), now(), senior.id);
+    startTrial(senior, deviceId);
     return { token, seniorId: senior.id, name: senior.name };
   });
+
+  /**
+   * El mes gratis empieza al emparejar su móvil por primera vez. Si ese móvil ya tuvo su mes gratis
+   * (con esta persona o con otra que se borró), sigue contando desde entonces.
+   */
+  function startTrial(senior, deviceId) {
+    if (senior.trial_started_at) return syncPlan(senior.id);
+    let startedAt = now();
+    if (typeof deviceId === 'string' && /^[\w-]{4,64}$/.test(deviceId)) {
+      const ref = deviceRef(deviceId);
+      db.prepare(`INSERT OR IGNORE INTO trials(device_hash, started_at) VALUES (?, ?)`).run(ref, startedAt);
+      startedAt = db.prepare(`SELECT started_at FROM trials WHERE device_hash = ?`).get(ref).started_at;
+    }
+    db.prepare(`UPDATE seniors SET trial_started_at = ? WHERE id = ?`).run(startedAt, senior.id);
+    syncPlan(senior.id);
+  }
 
   // Token de Firebase del móvil del mayor, para despertarlo al instante (cambios, "¿dónde está?")
   app.post('/api/device/fcm', async (req, reply) => {
@@ -511,7 +640,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
   app.get('/api/device/config', async (req, reply) => {
     const senior = requireDevice(req, reply);
     if (!senior) return;
-    return { version: senior.config_version, seniorId: senior.id, name: senior.name, config: cfgOf(senior) };
+    return { version: senior.config_version, seniorId: senior.id, name: senior.name, config: deviceConfigOf(senior) };
   });
 
   app.post('/api/device/heartbeat', async (req, reply) => {
@@ -538,7 +667,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
     }
 
     // Avisos de configuración rota (solo cuando cambia de bien a mal, para no spamear)
-    const cfg = cfgOf(senior);
+    const cfg = deviceConfigOf(senior); // la que de verdad tiene su móvil
     const problems = [];
     if (!status.isDefaultHome && prev.isDefaultHome !== false) problems.push('ya no es la pantalla de inicio');
     if (!status.isDefaultDialer && prev.isDefaultDialer !== false) problems.push('ya no es la app de teléfono');
@@ -652,9 +781,57 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
     db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).run(now());
   }
 
-  const timers = [setInterval(checkOffline, 5 * 60_000), setInterval(purgeOldData, 60 * 60_000)];
+  /** Mes gratis: avisa 5 días antes y al acabar, y manda a su móvil la configuración sin lo de pago. */
+  function checkPlans() {
+    if (!billing) return;
+    for (const s of db.prepare(`SELECT * FROM seniors WHERE trial_started_at IS NOT NULL`).all()) {
+      syncPlan(s.id);
+      const plan = planFor(s);
+      if (plan.status === 'trial' && s.trial_reminded < 1 && plan.trialEndsAt - now() <= REMIND_DAYS_BEFORE * 86400_000) {
+        db.prepare(`UPDATE seniors SET trial_reminded = 1 WHERE id = ?`).run(s.id);
+        createAlert(s, 'trial_ending', `Quedan ${plan.trialDaysLeft} días del mes gratis. Para seguir con las zonas seguras, `
+          + 'el historial de recorridos y el resto, suscríbete desde la app de la familia. El SOS y las llamadas siguen siempre.');
+      } else if (plan.status === 'free' && s.trial_reminded < 2) {
+        db.prepare(`UPDATE seniors SET trial_reminded = 2 WHERE id = ?`).run(s.id);
+        // Solo al acabar el mes gratis; si deja de pagar una suscripción, ya avisa Google Play
+        const everPaid = db.prepare(`SELECT 1 FROM subscriptions WHERE senior_id = ?`).get(s.id);
+        if (!everPaid) {
+          createAlert(s, 'trial_ended', 'Se ha acabado el mes gratis. Su móvil sigue funcionando (llamadas, contactos, SOS y '
+            + '«¿dónde está ahora?»), pero las zonas seguras, el historial, contestar sola y los timbres fuertes se han desactivado. '
+            + 'Suscríbete desde la app de la familia para recuperarlos tal y como estaban.');
+        }
+      }
+    }
+  }
+
+  /**
+   * Las suscripciones a punto de caducar (o caducadas hace poco) se vuelven a preguntar a Google:
+   * si se han renovado, sigue el plan; si no, se acaba. Cada una, como mucho una vez por hora.
+   */
+  async function refreshSubscriptions() {
+    if (!billing || !playApi.enabled) return;
+    const rows = db.prepare(`SELECT purchase_token, senior_id FROM subscriptions
+      WHERE expires_at < ? AND expires_at > ? AND updated_at < ?`).all(now() + 3600_000, now() - 30 * 86400_000, now() - 3600_000);
+    for (const row of rows) {
+      try {
+        const sub = await playApi.getSubscription(row.purchase_token);
+        if (sub) storeSubscription(row.purchase_token, summarizeSubscription(sub));
+        else db.prepare(`UPDATE subscriptions SET entitled = 0, state = 'GONE', updated_at = ? WHERE purchase_token = ?`).run(now(), row.purchase_token);
+        if (row.senior_id) syncPlan(row.senior_id);
+      } catch (err) {
+        app.log.warn({ err: err.message }, 'Google Play: no se ha podido renovar la comprobación');
+      }
+    }
+  }
+
+  const timers = [
+    setInterval(checkOffline, 5 * 60_000),
+    setInterval(purgeOldData, 60 * 60_000),
+    setInterval(checkPlans, 10 * 60_000),
+    setInterval(() => refreshSubscriptions().catch(() => {}), 30 * 60_000),
+  ];
   app.addHook('onClose', async () => { timers.forEach(clearInterval); db.close(); });
-  app.decorate('jobs', { checkOffline, purgeOldData });
+  app.decorate('jobs', { checkOffline, purgeOldData, checkPlans, refreshSubscriptions });
 
   return app;
 }
