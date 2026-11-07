@@ -106,6 +106,16 @@ private fun SetupScreen(onDone: () -> Unit) {
     val battery = remember(revision) { DeviceChecks.ignoringBatteryOptimizations(ctx) }
     val fullScreen = remember(revision) { DeviceChecks.fullScreenAllowed(ctx) }
     val ringtone = remember(revision) { Ringer.allowed(ctx) }
+    // Lo que se hará (pedir el permiso de ubicación) si aceptan el aviso
+    var locationDisclosure by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    locationDisclosure?.let { proceed ->
+        LocationDisclosure(
+            onAccept = { locationDisclosure = null; proceed() },
+            onDismiss = { locationDisclosure = null },
+            onPrivacy = { DeviceChecks.startFirst(ctx, listOf(Intent(Intent.ACTION_VIEW, Uri.parse("${Store.serverUrl}/privacidad")))) },
+        )
+    }
 
     LazyColumn(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
@@ -156,11 +166,14 @@ private fun SetupScreen(onDone: () -> Unit) {
                 actionLabel = if (location == "foreground") "Permitir siempre" else "Conceder",
                 settings = appSettings,
             ) {
-                if (location == "none") {
-                    permissions.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                } else {
-                    // En Android 11+ esto abre la pantalla de permisos de la app
-                    permissions.launch(arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
+                // Google Play exige explicarlo antes de pedir el permiso (aviso destacado de ubicación en segundo plano)
+                locationDisclosure = {
+                    if (location == "none") {
+                        permissions.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                    } else {
+                        // En Android 11+ esto abre la pantalla de permisos de la app
+                        permissions.launch(arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
+                    }
                 }
             }
         }
@@ -334,6 +347,39 @@ private fun ManualStep(key: String, title: String, body: String, revision: Int, 
             Text("Hecho")
         }
     }
+}
+
+/**
+ * Aviso destacado antes de pedir la ubicación, como exige Google Play para la ubicación en segundo plano:
+ * qué se recoge, para qué, que es también con la app cerrada y quién lo ve. Sale cada vez que se va a pedir.
+ */
+@Composable
+private fun LocationDisclosure(onAccept: () -> Unit, onDismiss: () -> Unit, onPrivacy: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Grandpa usa la ubicación de este móvil", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Grandpa recoge la ubicación de este móvil para que su familia pueda ver dónde está, recibir un aviso si sale " +
+                        "de una zona segura y saber dónde está si pulsa el botón SOS, incluso cuando la app está cerrada o no se está usando.",
+                    fontSize = 17.sp,
+                )
+                Text(
+                    "Solo la ve la familia que tiene acceso en la app Find My Grandpa. El historial se borra solo pasados los días " +
+                        "que elija la familia. Se puede desactivar en cualquier momento desde la app de la familia.",
+                    fontSize = 16.sp,
+                )
+                Text(
+                    "Actívalo solo si la persona que usa este móvil (o su representante legal) está de acuerdo.",
+                    fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                )
+                TextButton(onClick = onPrivacy) { Text("Política de privacidad") }
+            }
+        },
+        confirmButton = { Button(onClick = onAccept) { Text("Entendido, continuar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Ahora no") } },
+    )
 }
 
 @Composable

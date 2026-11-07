@@ -1,5 +1,5 @@
 [versions]
-agp = "8.7.3"
+agp = "8.13.2"
 kotlin = "2.0.21"
 coreKtx = "1.15.0"
 activityCompose = "1.9.3"
@@ -13,6 +13,7 @@ work = "2.10.0"
 osmdroid = "6.1.20"
 coil = "2.7.0"
 billing = "8.3.0"
+firebaseBom = "35.1.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -34,6 +35,8 @@ androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-
 osmdroid = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 play-billing = { module = "com.android.billingclient:billing", version.ref = "billing" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

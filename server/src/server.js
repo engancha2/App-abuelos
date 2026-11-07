@@ -14,6 +14,7 @@ import {
   TRIAL_DAYS, REMIND_DAYS_BEFORE, PREMIUM_FEATURES, accountRef, deviceRef, planOf, effectiveConfig,
 } from './billing.js';
 import { RINGTONES, ringtoneWav } from './ringtones.js';
+import { createPages, pageVars, missingVars } from './pages.js';
 import {
   now, sha256, randomToken, hashPassword, verifyPassword, parseCookies, haversineMeters, sanitizeConfig, phoneKey,
 } from './util.js';
@@ -61,7 +62,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
   const playApi = play ?? createPlay({ credentials: googleCredentials, packageName: env.playPackage, log: app.log });
   await app.register(fastifyMultipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
   await app.register(fastifyWebsocket, { options: { maxPayload: 64 * 1024 } });
-  await app.register(fastifyStatic, { root: path.join(__dirname, '..', 'public'), prefix: '/' });
+  await app.register(fastifyStatic, { root: path.join(__dirname, '..', 'public'), prefix: '/', index: false });
   await app.register(fastifyStatic, {
     root: uploadsDir, prefix: '/uploads/', decorateReply: false,
     setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'),
@@ -205,6 +206,19 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
   }
 
   // ======================================================================
+  // PÁGINAS: presentación (/), panel de la familia (/panel), privacidad y borrar la cuenta
+  // ======================================================================
+  const vars = pageVars(process.env);
+  const missing = missingVars(vars);
+  if (missing.length) app.log.warn(`Faltan datos para las páginas públicas (privacidad…): ${missing.join(', ')}`);
+  const page = createPages({ dir: path.join(__dirname, '..', 'pages'), vars });
+  const html = (name) => async (req, reply) => reply.type('text/html; charset=utf-8').send(page(name));
+  app.get('/', html('index'));
+  app.get('/privacidad', html('privacidad'));
+  app.get('/borrar-cuenta', html('borrar-cuenta'));
+  app.get('/panel', async (req, reply) => reply.sendFile('panel.html'));
+
+  // ======================================================================
   // AUTH FAMILIA
   // ======================================================================
   app.get('/api/meta', async () => ({
@@ -265,6 +279,56 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
   app.get('/api/me', async (req, reply) => {
     const user = requireUser(req, reply);
     return user ?? undefined;
+  });
+
+  /** Borra a una persona mayor con todo lo suyo: posiciones, avisos (en cascada) y las fotos de sus contactos. */
+  function removeSenior(seniorId) {
+    deviceSockets.get(seniorId)?.close();
+    db.prepare(`DELETE FROM seniors WHERE id = ?`).run(seniorId);
+    for (const file of fs.readdirSync(uploadsDir)) {
+      if (file.startsWith(`${seniorId}-`)) fs.rmSync(path.join(uploadsDir, file), { force: true });
+    }
+  }
+
+  /**
+   * Borrar la cuenta (Google Play exige poder hacerlo desde la app y desde la web).
+   * Las personas que creó pasan al familiar que lleva más tiempo; si no hay más familia, se borran con todos sus datos.
+   * Una suscripción de Google Play no se cancela sola: se avisa para que la cancele allí.
+   */
+  function deleteAccount(userId) {
+    const paying = db.prepare(`SELECT 1 FROM subscriptions WHERE user_id = ? AND entitled = 1 AND auto_renew = 1 AND expires_at > ?`)
+      .get(userId, now());
+    let removedSeniors = 0;
+    for (const { senior_id: seniorId } of db.prepare(`SELECT senior_id FROM members WHERE user_id = ? AND role = 'owner'`).all(userId)) {
+      const heir = db.prepare(`SELECT user_id FROM members WHERE senior_id = ? AND user_id != ? ORDER BY rowid LIMIT 1`).get(seniorId, userId);
+      if (heir) db.prepare(`UPDATE members SET role = 'owner' WHERE senior_id = ? AND user_id = ?`).run(seniorId, heir.user_id);
+      else { removeSenior(seniorId); removedSeniors++; }
+    }
+    db.prepare(`DELETE FROM users WHERE id = ?`).run(userId); // sesiones, familias y avisos al móvil, en cascada
+    return { ok: true, removedSeniors, cancelSubscription: Boolean(paying) };
+  }
+
+  // Desde la app y el panel, con la sesión abierta (y la contraseña, por si acaso)
+  app.post('/api/me/delete', async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const row = db.prepare(`SELECT pass_hash FROM users WHERE id = ?`).get(user.id);
+    // 403 y no 401: la app cierra la sesión con cualquier 401
+    if (!verifyPassword(String(req.body?.password ?? ''), row.pass_hash)) return reply.code(403).send({ error: 'La contraseña no es correcta' });
+    const result = deleteAccount(user.id);
+    setSessionCookie(req, reply, '', 0);
+    return result;
+  });
+
+  // Desde la página /borrar-cuenta, sin tener la app instalada
+  app.post('/api/account/delete', async (req, reply) => {
+    if (tooMany(`delete:${req.ip}`)) return reply.code(429).send({ error: 'Demasiados intentos, espera unos minutos' });
+    const { email, password } = req.body ?? {};
+    const user = q.userByEmail.get(String(email ?? ''));
+    if (!user || !verifyPassword(String(password ?? ''), user.pass_hash)) {
+      return reply.code(403).send({ error: 'Email o contraseña incorrectos' });
+    }
+    return deleteAccount(user.id);
   });
 
   app.post('/api/push/subscribe', async (req, reply) => {
@@ -359,8 +423,7 @@ export async function buildServer({ dataDir = env.dataDir, logger = true, fcm = 
     const ctx = requireSenior(req, reply);
     if (!ctx) return;
     if (ctx.senior.role !== 'owner') return reply.code(403).send({ error: 'Solo quien lo creó puede eliminarlo' });
-    deviceSockets.get(ctx.senior.id)?.close();
-    db.prepare(`DELETE FROM seniors WHERE id = ?`).run(ctx.senior.id);
+    removeSenior(ctx.senior.id);
     return { ok: true };
   });
 

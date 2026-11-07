@@ -1,7 +1,7 @@
 {
   "name": "Find My Grandpa · Panel familiar",
   "short_name": "Find My Grandpa",
-  "start_url": "/",
+  "start_url": "/panel",
   "display": "standalone",
   "background_color": "#f6f4ef",
   "theme_color": "#1f6f5c",

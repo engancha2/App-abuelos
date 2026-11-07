@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,22 +7,36 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Firma para Google Play: android/keystore.properties (no se sube a git). Sin ese archivo, la versión release sale sin firmar.
+val signing = rootProject.file("keystore.properties").takeIf { it.exists() }
+    ?.let { file -> Properties().apply { file.inputStream().use { load(it) } } }
+
 android {
     namespace = "com.estudiofenix.cerca"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.estudiofenix.cerca"
         minSdk = 29          // Android 10: RoleManager (inicio + teléfono) y filtrado de llamadas
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
         val serverUrl = (project.findProperty("cerca.serverUrl") as String?) ?: "https://cerca.tudominio.com"
         buildConfigField("String", "SERVER_URL", "\"$serverUrl\"")
     }
 
+    signingConfigs {
+        if (signing != null) create("release") {
+            storeFile = rootProject.file(signing.getProperty("storeFile"))
+            storePassword = signing.getProperty("storePassword")
+            keyAlias = signing.getProperty("keyAlias")
+            keyPassword = signing.getProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

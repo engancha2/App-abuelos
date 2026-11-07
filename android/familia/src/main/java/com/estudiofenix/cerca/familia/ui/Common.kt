@@ -28,7 +28,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-val spanish = Locale("es", "ES")
+val spanish = Locale.forLanguageTag("es-ES")
 
 /** "hace 5 min", "hace 2 h"… igual que el panel web. */
 fun ago(ts: Long?): String {

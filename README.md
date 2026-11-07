@@ -43,8 +43,25 @@ Requisitos: Node 22.13+ (usa el SQLite integrado de Node, sin dependencias nativ
 | `BILLING` | `on` | `off` = todo gratis para todos (sin mes gratis ni suscripción) |
 | `PLAY_PACKAGE_NAME` | `com.estudiofenix.cerca.familia` | La app de la familia, donde se compra la suscripción |
 | `PLAY_PRODUCT_IDS` | `premium` | Id de la suscripción en Play Console (varios separados por comas) |
+| `PLAY_SENIOR_PACKAGE` | `com.estudiofenix.cerca` | La app del mayor (para el botón de Google Play de la web) |
+| `LEGAL_NAME` | `Estudio Fénix S.L.` | Titular (empresa o autónomo) en la web y la política de privacidad |
+| `LEGAL_ID` | `B12345678` | NIF / CIF |
+| `LEGAL_ADDRESS` | `C/ Mayor 1, 43001 Tarragona` | Domicilio |
+| `LEGAL_EMAIL` | `privacidad@tudominio.com` | Contacto y derechos RGPD |
+| `HOSTING_PROVIDER` | `Hetzner Online GmbH (Alemania)` | Dónde está el servidor (sale en la política de privacidad) |
+
+Sin los `LEGAL_*` y `HOSTING_PROVIDER`, las páginas enseñan `[falta …]` en su lugar (y el servidor lo avisa al arrancar): ponlos antes de publicar.
 
 4. Dominio con HTTPS en Dokploy (el WebSocket `/api/device/ws` funciona con Traefik sin configuración extra).
+
+Páginas del servidor:
+
+| Dirección | Qué es |
+|---|---|
+| `/` | Presentación de la app, con los botones de Google Play (`server/pages/index.html`) |
+| `/panel` | Panel de la familia (instalable como app desde el navegador) |
+| `/privacidad` | Política de privacidad: la URL que pide Google Play |
+| `/borrar-cuenta` | Borrar la cuenta sin la app: la otra URL que pide Google Play |
 
 En local: `cd server && npm install && npm start` → http://localhost:3000. Tests: `npm test`.
 
@@ -52,12 +69,23 @@ Las claves VAPID de push se generan solas en el primer arranque y se guardan en 
 
 ## 2. App Android
 
-1. Abre `android/` en Android Studio (Ladybug o posterior). Si propone actualizar AGP/Kotlin, puedes aceptar.
+1. Abre `android/` en Android Studio (una versión reciente: el proyecto usa AGP 8.13 y Android 16, API 36).
 2. En `android/gradle.properties` pon tu servidor: `cerca.serverUrl=https://cerca.tudominio.com` (también se puede cambiar en el asistente).
 3. Compila e instala en el Redmi.
 4. Se abre el asistente. En el panel web: añade a la persona → Ajustes → «Generar código», e introdúcelo en el móvil. Después completa el resto de pasos hasta que estén todos en ✅.
 
 Requisitos: Android 10 o superior y Google Play Services (geovallas y ubicación).
+
+**Avisos de la app de la familia (Firebase).** En la consola de Firebase, el mismo proyecto de la cuenta de servicio: añade una app Android con el paquete `com.estudiofenix.cerca.familia` y copia sus 4 datos en `android/gradle.properties` (`firebase.appId`, `firebase.apiKey`, `firebase.projectId`, `firebase.senderId`). No hace falta `google-services.json`. Sin ellos, la app funciona igual pero los avisos solo se ven al abrirla.
+
+**Versión para Google Play.** La firma está en `android/keystore.properties` y `android/keystore/` (fuera de git). **Guarda una copia de los dos en un sitio seguro** (gestor de contraseñas o nube privada): es la clave de subida. Con la *firma de apps de Google Play* activada, si se pierde se puede pedir otra a Google, pero tarda días.
+
+```
+cd android
+./gradlew :app:bundleRelease :familia:bundleRelease
+```
+
+Los paquetes quedan en `app/build/outputs/bundle/release/app-release.aab` y `familia/build/outputs/bundle/release/familia-release.aab`. Antes de cada subida, sube `versionCode` en `app/build.gradle.kts` y `familia/build.gradle.kts`.
 
 ## 3. Probar en el Redmi antes de dárselo
 
@@ -89,13 +117,14 @@ Para activarlo:
 ## Notas para publicarla en Google Play
 
 - **Teléfono**: al ser app de teléfono predeterminada, se justifica el uso de los permisos de llamadas en el formulario de permisos.
-- **Ubicación en segundo plano**: Play exige aviso destacado dentro de la app antes de pedir el permiso, justificación en la ficha y un vídeo mostrando la función. El asistente ya explica para qué es; para la publicación conviene añadir una pantalla de aviso específica antes del paso 5.
+- **Ubicación en segundo plano**: el asistente ya enseña el aviso destacado antes de pedir el permiso (paso 5). En Play Console hay que justificarlo y subir un vídeo corto (YouTube, oculto) que enseñe ese aviso y la función: el mapa y el aviso de salida de zona en la app de la familia.
+- **Servicio en primer plano de ubicación** y **notificaciones a pantalla completa** (llamadas): se declaran en Play Console → Contenido de la app.
 - **`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`**: Play la permite solo en casos concretos; si la rechazan, se puede quitar y dejar solo el paso de ajustes manual.
-- **RGPD**: son datos de ubicación de una persona vulnerable. El historial se borra solo según los días configurados (7 por defecto, máx. 90). Hace falta política de privacidad y que el consentimiento lo dé la persona o su representante legal.
+- **Privacidad y borrar la cuenta**: las URL son `https://tu-dominio/privacidad` y `https://tu-dominio/borrar-cuenta`. Dentro de la app de la familia: menú ⋮ → Privacidad / Borrar mi cuenta.
+- **RGPD**: son datos de ubicación de una persona vulnerable. El historial se borra solo según los días configurados (7 por defecto, máx. 90). El consentimiento lo da la persona o su representante legal (el aviso de ubicación lo recuerda). Conviene que un abogado revise la política de privacidad (`server/pages/privacidad.html`).
 
 ## Limitaciones conocidas (v1)
 
-- **No se ha compilado todavía**: el código Android está revisado pero no compilado (el entorno donde se escribió no tenía el SDK de Android). Espera algún ajuste menor en la primera compilación.
 - WhatsApp no permite iniciar videollamadas desde otra app: el botón abre el chat del contacto.
 - Los ajustes de Xiaomi (autoinicio, etc.) no se pueden leer por código; el asistente los abre y la familia los marca a mano.
 - Textos solo en castellano (escritos directamente en el código; para traducir habría que pasarlos a `strings.xml`).

@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -41,6 +42,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen() {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var register by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
@@ -108,6 +110,13 @@ fun LoginScreen() {
         }
         TextButton(onClick = { register = !register; error = null }) {
             Text(if (register) "Ya tengo cuenta" else "Crear una cuenta")
+        }
+        if (register) {
+            Text("Al crear la cuenta aceptas la política de privacidad.", style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        TextButton(onClick = { openUrl(context, server.trimEnd('/') + "/privacidad") }) {
+            Text("Política de privacidad", style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = { showServer = !showServer }) {
             Text(if (showServer) "Ocultar servidor" else "Cambiar servidor", style = MaterialTheme.typography.bodySmall)

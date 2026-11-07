@@ -108,6 +108,19 @@ object FamilyApi {
         Session.signOut()
     }
 
+    /**
+     * Borra la cuenta (y las personas que solo tiene esta cuenta) y cierra la sesión.
+     * Devuelve true si paga una suscripción: hay que cancelarla en Google Play, no se cancela sola.
+     */
+    suspend fun deleteAccount(password: String): Boolean {
+        val r = call("POST", "/api/me/delete", body { put("password", password) }, DeleteResponse.serializer())!!
+        Session.signOut()
+        return r.cancelSubscription
+    }
+
+    /** La política de privacidad del servidor (la misma que en Google Play). */
+    fun privacyUrl(): String = url("/privacidad")
+
     suspend fun registerFcm(token: String) {
         call<Unit>("POST", "/api/push/fcm", body { put("token", token) })
     }

@@ -120,7 +120,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val spanish = Locale("es", "ES")
+private val spanish = Locale.forLanguageTag("es-ES")
 
 /** Mantener pulsado [millis] para activar. Evita SOS y menús abiertos sin querer. */
 private fun Modifier.holdToTrigger(

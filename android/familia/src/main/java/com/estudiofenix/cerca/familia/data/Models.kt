@@ -146,3 +146,6 @@ data class VersionResponse(val version: Int = 0)
 
 @Serializable
 data class PhotoResponse(val photo: String)
+
+@Serializable
+data class DeleteResponse(val removedSeniors: Int = 0, val cancelSubscription: Boolean = false)

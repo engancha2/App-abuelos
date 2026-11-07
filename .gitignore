@@ -14,3 +14,7 @@ captures/
 *.aab
 *.jks
 *.keystore
+
+# Firma de Google Play (clave de subida y sus contraseñas)
+android/keystore.properties
+android/keystore/

@@ -1,0 +1,135 @@
+/* Páginas públicas: presentación, privacidad y borrar la cuenta (el panel usa styles.css) */
+:root {
+  --bg: #f6f4ef;
+  --card: #ffffff;
+  --ink: #1d2421;
+  --muted: #5d6762;
+  --line: #e2ded5;
+  --brand: #1f6f5c;
+  --brand-ink: #ffffff;
+  --brand-soft: #e3f0eb;
+  --accent: #d9822b;
+  --accent-soft: #fbeedf;
+  --danger: #b3261e;
+  --radius: 18px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121614; --card: #1b201e; --ink: #eef2ef; --muted: #a3ada8; --line: #2c3430;
+    --brand: #5cc2a4; --brand-ink: #0f1f1a; --brand-soft: #1d3a32; --accent: #f0a85a; --accent-soft: #3a2a17;
+    --danger: #ff8a80;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--ink); font-size: 17px; line-height: 1.55;
+}
+a { color: var(--brand); }
+img { max-width: 100%; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+.narrow { max-width: 760px; }
+
+/* Cabecera */
+.site-head { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.site-head .wrap { display: flex; align-items: center; gap: 12px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.2rem; color: var(--ink); text-decoration: none; }
+.brand img { width: 34px; height: 34px; border-radius: 9px; }
+.site-head nav { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.site-head nav a { text-decoration: none; color: var(--ink); padding: 8px 12px; border-radius: 10px; font-weight: 600; font-size: .95rem; }
+.site-head nav a:hover { background: var(--brand-soft); }
+.site-head nav a.cta { background: var(--brand); color: var(--brand-ink); }
+@media (max-width: 560px) { .site-head nav a.hide-sm { display: none; } }
+
+/* Botones */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; font: inherit; font-weight: 700; text-decoration: none;
+  border-radius: 14px; padding: 14px 20px; border: 2px solid transparent; cursor: pointer; line-height: 1.2; }
+.btn.primary { background: var(--brand); color: var(--brand-ink); }
+.btn.accent { background: var(--accent); color: #fff; }
+.btn.ghost { border-color: var(--line); color: var(--ink); background: var(--card); }
+.btn.danger { background: var(--danger); color: #fff; }
+.btn small { display: block; font-weight: 500; font-size: .8rem; opacity: .9; }
+.btn .stack { display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.btn:disabled { opacity: .6; cursor: default; }
+
+/* Portada */
+.hero { padding: 56px 0 40px; }
+.hero .wrap { display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; align-items: center; }
+.hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.1; margin: 0 0 16px; letter-spacing: -.02em; }
+.hero p.lead { font-size: 1.2rem; color: var(--muted); margin: 0 0 24px; }
+.hero .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.badge-free { display: inline-block; background: var(--accent-soft); color: var(--accent); font-weight: 700; padding: 6px 12px; border-radius: 999px; margin-bottom: 16px; font-size: .95rem; }
+@media (max-width: 820px) { .hero .wrap { grid-template-columns: 1fr; } .hero { padding-top: 32px; } }
+
+/* El móvil de ejemplo, hecho con CSS */
+.phone { width: 260px; max-width: 100%; margin: 0 auto; background: #0e1311; border-radius: 38px; padding: 12px; box-shadow: 0 30px 60px rgba(0,0,0,.18); }
+.phone .screen { background: #f3f1ea; border-radius: 28px; padding: 22px 14px 16px; color: #1d2421; }
+.phone .clock { text-align: center; font-size: 3rem; font-weight: 800; line-height: 1; }
+.phone .date { text-align: center; color: #5d6762; margin: 4px 0 16px; font-size: .9rem; }
+.phone .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.phone .tile { background: #fff; border-radius: 14px; padding: 10px 6px; text-align: center; font-weight: 700; font-size: .85rem; }
+.phone .tile .face { font-size: 1.8rem; display: block; }
+.phone .sos { margin-top: 10px; background: #c62828; color: #fff; text-align: center; border-radius: 14px; padding: 12px; font-weight: 800; letter-spacing: .05em; }
+.phone .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.phone .row2 div { background: #1f6f5c; color: #fff; border-radius: 14px; padding: 10px; text-align: center; font-weight: 700; font-size: .85rem; }
+
+/* Secciones */
+section.block { padding: 48px 0; }
+section.block.alt { background: var(--card); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+section.block h2 { font-size: clamp(1.5rem, 3.5vw, 2.1rem); margin: 0 0 8px; letter-spacing: -.01em; }
+section.block p.sub { color: var(--muted); margin: 0 0 28px; font-size: 1.08rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+section.block.alt .card { background: var(--bg); }
+.card h3 { margin: 6px 0 6px; font-size: 1.1rem; }
+.card p { margin: 0; color: var(--muted); }
+.card .ico { font-size: 1.8rem; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
+.app-card { display: flex; flex-direction: column; gap: 12px; }
+.app-card .head { display: flex; gap: 14px; align-items: center; }
+.app-card .head img { width: 56px; height: 56px; border-radius: 14px; }
+.app-card ul { margin: 0; padding-left: 20px; color: var(--muted); }
+.app-card ul li { margin: 4px 0; }
+.steps { counter-reset: step; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.steps .card::before { counter-increment: step; content: counter(step); display: inline-flex; width: 36px; height: 36px; border-radius: 50%;
+  background: var(--brand); color: var(--brand-ink); align-items: center; justify-content: center; font-weight: 800; }
+.price { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 680px) { .price { grid-template-columns: 1fr; } }
+.price .card.featured { border: 2px solid var(--accent); }
+.price .big { font-size: 1.6rem; font-weight: 800; margin: 4px 0 8px; color: var(--ink); }
+.check-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.check-list li { padding-left: 28px; position: relative; margin: 6px 0; color: var(--ink); }
+.check-list li::before { content: "✓"; position: absolute; left: 0; color: var(--brand); font-weight: 800; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin-bottom: 10px; }
+section.block.alt details { background: var(--bg); }
+details summary { cursor: pointer; font-weight: 700; }
+details p { color: var(--muted); margin: 10px 0 0; }
+
+/* Textos largos (privacidad) */
+.doc { padding-top: 40px; padding-bottom: 64px; } /* sin tocar el margen lateral de .wrap */
+.doc h1 { font-size: 2rem; margin: 0 0 4px; }
+.doc h2 { font-size: 1.25rem; margin: 32px 0 8px; }
+.doc p, .doc li { color: var(--ink); }
+.doc .muted { color: var(--muted); }
+.doc table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: .95rem; }
+.doc th, .doc td { text-align: left; vertical-align: top; padding: 10px; border-bottom: 1px solid var(--line); }
+.doc th { background: var(--brand-soft); }
+.table-scroll { overflow-x: auto; }
+
+/* Formulario de borrar la cuenta */
+.form { display: grid; gap: 12px; max-width: 420px; }
+.form label { display: grid; gap: 4px; font-weight: 600; }
+.form input { font: inherit; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.msg { padding: 14px 16px; border-radius: 14px; margin-top: 12px; }
+.msg.ok { background: var(--brand-soft); }
+.msg.error { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+
+/* Pie */
+.site-foot { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: .92rem; }
+.site-foot .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+.site-foot a { color: var(--muted); }
+.site-foot .grow { flex: 1; }

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Borrar mi cuenta · Grandpa</title>
+  <meta name="theme-color" content="#1f6f5c">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="site-head">
+    <div class="wrap">
+      <a class="brand" href="/"><img src="/icon.svg" alt=""> Grandpa</a>
+      <nav><a class="cta" href="/panel">Entrar</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap narrow doc">
+    <h1>Borrar mi cuenta</h1>
+    <p>Puedes borrar tu cuenta de Find My Grandpa aquí mismo, sin tener la app instalada. También desde la app: menú <b>⋮</b> → <b>Borrar mi cuenta</b>.</p>
+
+    <h2>Qué se borra</h2>
+    <ul>
+      <li>Tu cuenta: nombre, email y contraseña, y tus avisos en el móvil y el navegador.</li>
+      <li>Las personas mayores que creaste <b>si no tienen más familia en la app</b>, con todos sus datos: contactos y fotos, ubicaciones, avisos y configuración. Su móvil se desconecta.</li>
+      <li>Si tienen más familia, siguen con ellos: pasan al familiar que lleva más tiempo.</li>
+    </ul>
+    <p>Se borra al momento y no se puede deshacer. Solo guardamos los datos de la suscripción sin datos personales que la ley nos obligue a conservar.</p>
+    <p><b>Si pagas una suscripción, cancélala en Google Play</b> (Pagos y suscripciones): borrar la cuenta no la cancela.</p>
+
+    <h2>Borrar ahora</h2>
+    <form class="form" id="form">
+      <label>Email de tu cuenta <input type="email" name="email" required autocomplete="username"></label>
+      <label>Contraseña <input type="password" name="password" required autocomplete="current-password"></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-weight:500">
+        <input type="checkbox" name="sure" required style="margin-top:6px"> Entiendo que se borra para siempre y no se puede deshacer.
+      </label>
+      <button class="btn danger" id="go">Borrar mi cuenta</button>
+    </form>
+    <div id="msg" class="msg" hidden></div>
+
+    <p class="muted" style="margin-top:32px">¿Has olvidado la contraseña o quieres borrar solo algunos datos? Escríbenos a <a href="mailto:{{LEGAL_EMAIL}}">{{LEGAL_EMAIL}}</a> desde el email de tu cuenta y lo hacemos en un mes como mucho.</p>
+  </main>
+
+  <footer class="site-foot">
+    <div class="wrap">
+      <span class="grow">© {{LEGAL_NAME}}</span>
+      <a href="/">Inicio</a>
+      <a href="/privacidad">Privacidad</a>
+    </div>
+  </footer>
+
+  <script>
+    const form = document.getElementById('form');
+    const msg = document.getElementById('msg');
+    const show = (text, ok) => { msg.textContent = text; msg.className = `msg ${ok ? 'ok' : 'error'}`; msg.hidden = false; };
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(form);
+      const go = document.getElementById('go');
+      go.disabled = true;
+      try {
+        const res = await fetch('/api/account/delete', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: data.get('email'), password: data.get('password') }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'No se ha podido borrar la cuenta');
+        form.hidden = true;
+        show('Tu cuenta se ha borrado.' + (body.cancelSubscription ? ' Recuerda cancelar la suscripción en Google Play → Pagos y suscripciones.' : ''), true);
+      } catch (err) {
+        show(err.message, false);
+      } finally {
+        go.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

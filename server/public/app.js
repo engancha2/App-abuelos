@@ -114,10 +114,12 @@ function renderAuth(mode) {
         ${reg ? `<label class="field"><span>Tu nombre</span><input name="name" type="text" required autocomplete="name"></label>` : ''}
         <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="email"></label>
         <label class="field"><span>Contraseña</span><input name="password" type="password" required minlength="${reg ? 8 : 1}" autocomplete="${reg ? 'new-password' : 'current-password'}"></label>
+        ${reg ? '<p class="hint">Al crear la cuenta aceptas la <a href="/privacidad" target="_blank">política de privacidad</a>.</p>' : ''}
         <button class="btn primary" style="width:100%">${reg ? 'Crear cuenta' : 'Entrar'}</button>
       </form>
       ${state.meta.allowRegistration ? `<p style="text-align:center"><a href="${reg ? '#/login' : '#/register'}">${reg ? 'Ya tengo cuenta' : 'Crear una cuenta'}</a></p>` : ''}
-    </div>`;
+    </div>
+    <p class="hint" style="text-align:center"><a href="/">Qué es Grandpa</a> · <a href="/privacidad">Privacidad</a></p>`;
   $('#authform').onsubmit = async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target));
@@ -157,7 +159,8 @@ async function renderHome() {
       <input name="name" type="text" placeholder="Nombre (p. ej. Abuela Rosa)" class="grow" required>
       <button class="btn primary">Añadir</button>
     </form>
-    <div id="pushbox"></div>`;
+    <div id="pushbox"></div>
+    <p class="hint" style="text-align:center;margin-top:32px"><a href="/privacidad">Privacidad</a> · <a href="/borrar-cuenta">Borrar mi cuenta</a></p>`;
   view.querySelectorAll('[data-id]').forEach((el) => (el.onclick = () => (location.hash = `#/s/${el.dataset.id}`)));
   $('#addform').onsubmit = async (e) => {
     e.preventDefault();

@@ -1,5 +1,8 @@
 package com.estudiofenix.cerca.familia.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,7 +41,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -59,6 +66,8 @@ fun SeniorsScreen(onOpen: (id: Long, tab: String) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var adding by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var deleting by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
 
     suspend fun load() {
         loading = true
@@ -83,7 +92,16 @@ fun SeniorsScreen(onOpen: (id: Long, tab: String) -> Unit) {
                     DropdownMenu(menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(
                             text = { Text("Cerrar sesión (${Session.email.orEmpty()})") },
-                            onClick = { menu = false; scope.launch { FamilyApi.logout() } },
+                            // Con el token, este móvil deja de recibir los avisos de esta cuenta
+                            onClick = { menu = false; scope.launch { FamilyApi.logout(Session.fcmToken) } },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Privacidad") },
+                            onClick = { menu = false; openUrl(context, FamilyApi.privacyUrl()) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Borrar mi cuenta", color = MaterialTheme.colorScheme.error) },
+                            onClick = { menu = false; deleting = true },
                         )
                     }
                 },
@@ -117,6 +135,17 @@ fun SeniorsScreen(onOpen: (id: Long, tab: String) -> Unit) {
                 }
             }
         }
+    }
+
+    if (deleting) {
+        DeleteAccountDialog(
+            onDismiss = { deleting = false },
+            // Al borrarla se cierra la sesión y la app vuelve sola a la pantalla de entrar
+            onDeleted = { mustCancel ->
+                deleting = false
+                if (mustCancel) openPlaySubscriptions(context)
+            },
+        )
     }
 
     if (adding) {
@@ -164,6 +193,59 @@ private fun SeniorCard(s: SeniorSummary, onClick: () -> Unit) {
             if (s.pendingAlerts > 0) Badge { Text("${s.pendingAlerts}") }
         }
     }
+}
+
+/**
+ * Borrar la cuenta (Google Play lo exige dentro de la app). Pide la contraseña y explica qué se borra.
+ * [onDeleted] recibe true si pagaba una suscripción: hay que cancelarla en Google Play, no se cancela sola.
+ */
+@Composable
+private fun DeleteAccountDialog(onDismiss: () -> Unit, onDeleted: (mustCancelSubscription: Boolean) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Borrar mi cuenta") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Se borra tu cuenta y, de las personas que creaste, las que no tengan más familia en la app, con todos sus datos " +
+                    "(su móvil se desconecta). Las que sí tengan, pasan a esa familia. No se puede deshacer.")
+                Text("Si pagas una suscripción, cancélala en Google Play: borrar la cuenta no la cancela.", fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(
+                    password, { password = it; error = null }, label = { Text("Tu contraseña") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = error != null, supportingText = { error?.let { Text(it) } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = password.isNotEmpty() && !busy,
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            onDeleted(FamilyApi.deleteAccount(password))
+                        } catch (e: Exception) {
+                            error = friendlyError(e)
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+            ) { Text("Borrar para siempre", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+/** Abre una página en el navegador. */
+fun openUrl(context: Context, url: String) {
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 }
 
 @Composable

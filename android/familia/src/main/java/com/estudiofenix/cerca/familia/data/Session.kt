@@ -32,6 +32,11 @@ object Session {
         _loggedIn.value = true
     }
 
+    /** El token de Firebase de este móvil (para que deje de recibir avisos al cerrar la sesión). */
+    var fcmToken: String?
+        get() = prefs.getString("fcmToken", null)
+        set(v) = prefs.edit().putString("fcmToken", v).apply()
+
     fun signOut() {
         prefs.edit().remove("token").remove("name").remove("email").apply()
         _loggedIn.value = false

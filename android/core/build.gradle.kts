@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.estudiofenix.cerca.core"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26 // la app de la familia admite móviles más antiguos que la del mayor

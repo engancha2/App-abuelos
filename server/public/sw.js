@@ -17,7 +17,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const id = event.notification.data?.seniorId;
-  const url = id ? `/#/s/${id}/avisos` : '/';
+  const url = id ? `/panel#/s/${id}/avisos` : '/panel';
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const w of wins) { await w.focus(); return w.navigate(url); }
